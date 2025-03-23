@@ -59,6 +59,44 @@ npm run update:production
 
 > **Not:** Güvenlik için, tüm güncellemeler önce otomatik olarak preview kanalına gönderilir. Eğer kanal belirtilmezse, varsayılan olarak preview kanalı kullanılır.
 
+## Otomatik Git Commit ve Push Sistemi
+
+Bu proje için otomatik Git commit ve push sistemi oluşturulmuştur. Bu sistem, değişikliklerinizi kolayca GitHub'a göndermenizi sağlar.
+
+### Sistem Dosyaları
+
+1. **auto-push.ps1**: Otomatik commit ve push işlemlerini gerçekleştiren PowerShell scripti
+2. **run-auto-push.bat**: Manuel olarak auto-push.ps1 çalıştırmanızı sağlayan batch dosyası
+
+### Kullanım
+
+Otomatik commit ve push işlemini başlatmak için aşağıdaki adımları izleyin:
+
+1. Projenin ana dizininde `run-auto-push.bat` dosyasına çift tıklayın, veya
+2. PowerShell'de `.\auto-push.ps1` komutunu çalıştırın
+
+### Masaüstü Kısayolu Oluşturma
+
+Daha kolay erişim için masaüstüne bir kısayol oluşturabilirsiniz:
+1. `run-auto-push.bat` dosyasına sağ tıklayın
+2. "Gönder" > "Masaüstü (kısayol oluştur)" seçeneğini seçin
+
+### Nasıl Çalışır?
+
+Script şu adımları otomatik olarak gerçekleştirir:
+1. Değişiklikleri kontrol eder
+2. Değişiklik varsa, önce uzak depodaki (GitHub) değişiklikleri çeker (`git pull`)
+3. Yerel değişiklikleri ekler (`git add .`)
+4. Tarih/saat içeren bir commit oluşturur
+5. Değişiklikleri GitHub'a gönderir (`git push`)
+
+### Önemli Notlar
+
+- Bu sistem, git kimlik bilgilerinizin önceden kaydedilmiş olduğunu varsayar
+- Script sadece değişiklik olduğunda commit oluşturur, değişiklik yoksa hiçbir işlem yapmaz
+- Çakışma durumunda script durur ve manuel müdahale gerektiğini belirtir
+- Önemli değişikliklerden sonra scripti çalıştırmayı alışkanlık haline getirmeniz önerilir
+
 ## Özellikler
 
 - Konu Yönetimi
@@ -71,6 +109,7 @@ Daha detaylı bilgi için [PRD.md](./PRD.md) dosyasına bakabilirsiniz.
 
 ## Son Güncellemeler
 
+- Otomatik Git commit ve push sistemi eklendi
 - Bildirim davranışı iyileştirildi (sadece önemli anlarda bildirim gönderiliyor)
 - Bildirime tıklandığında doğru ekrana yönlendirme eklendi
 - Kalan süre hesaplaması düzeltildi
