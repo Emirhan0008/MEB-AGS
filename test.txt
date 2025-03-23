@@ -1,0 +1,1 @@
+Bu dosya, otomatik commit ve push işlemini test etmek için oluşturulmuştur. 
