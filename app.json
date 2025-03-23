@@ -1,0 +1,78 @@
+{
+  "expo": {
+    "name": "MEBAGS",
+    "slug": "meb-ags",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0f172a"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.mebags.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0f172a"
+      },
+      "package": "com.mebags.app",
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Fotoğraf çekmek ve galeriden seçmek için izin gerekiyor.",
+          "cameraPermission": "Fotoğraf çekmek için kamera izni gerekiyor."
+        }
+      ],
+      "expo-notifications"
+    ],
+    "scheme": "meb-ags",
+    "experiments": {
+      "typedRoutes": true,
+      "tsconfigPaths": true
+    },
+    "notification": {
+      "icon": "./assets/notification-icon.png",
+      "color": "#0f172a",
+      "iosDisplayInForeground": true,
+      "androidMode": "default",
+      "androidCollapsedTitle": "MEB AGS"
+    },
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "ad96967d-aa29-41df-b4e2-051c78e4dfbd"
+      }
+    },
+    "owner": "emirhan008",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/ad96967d-aa29-41df-b4e2-051c78e4dfbd",
+      "channel": "production",
+      "enabled": true,
+      "fallbackToCacheTimeout": 0,
+      "checkAutomatically": "ON_LOAD"
+    }
+  }
+}
