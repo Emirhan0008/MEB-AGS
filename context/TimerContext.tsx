@@ -1195,11 +1195,8 @@ export const TimerProvider: React.FC<TimerProviderProps> = ({ children }) => {
   
   // Pomodoro oturumu tamamlandığında çalışma süresini güncelle
   const handlePomodoroSessionComplete = async () => {
-    // İlgili kısım silindi, geri ekliyoruz
-    // Çalışma süresine ekle (dakika cinsinden)
-    const workSessionDuration = 25 * 60 * 1000; // 25 dakika (ms cinsinden)
-    const workSessionMinutes = Math.floor(workSessionDuration / 60000);
-    updateStudyTime(workSessionMinutes);
+    // Bu fonksiyon artık başka yerde çağrıldığı için burayı boş bırakıyoruz
+    // Çalışma süresine ekle işlemi diğer yerlerde yapılıyor
   };
   
   // Bildirim kanalı oluştur
