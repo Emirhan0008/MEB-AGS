@@ -469,10 +469,17 @@ export default function ProfileScreen() {
               onPress={async () => {
                 try {
                   const result = await createBackup();
-                  if (result) {
+                  if (result.success) {
                     // Son yedekleme tarihini güncelle
                     const date = await getLastBackupDate();
                     setLastBackupDate(date);
+                    
+                    Alert.alert(
+                      'Yedekleme Başarılı',
+                      Platform.OS === 'android' 
+                        ? 'Verileriniz başarıyla yedeklendi. Yedek dosyası indirilenler klasörüne kaydedildi.'
+                        : 'Verileriniz başarıyla yedeklendi. Yedek dosyası uygulama klasörüne kaydedildi.'
+                    );
                   }
                 } catch (error) {
                   Alert.alert(

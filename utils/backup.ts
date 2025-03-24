@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system';
 import * as DocumentPicker from 'expo-document-picker';
-import { Platform, Share } from 'react-native';
+import { Platform } from 'react-native';
 
 // Yedeklenecek verilerin anahtarları
 const BACKUP_KEYS = {
@@ -81,19 +81,18 @@ export const createBackup = async () => {
     
     // Son yedekleme tarihini kaydet
     await AsyncStorage.setItem(BACKUP_KEYS.LAST_BACKUP_DATE, new Date().toISOString());
-    
-    // Dosyayı paylaş
-    try {
-      await Share.share({
-        title: 'MEB AGS Yedek Dosyası',
-        message: 'MEB AGS uygulaması yedek dosyası',
-        url: Platform.OS === 'ios' ? filePath : `file://${filePath}`
+
+    // Dosyayı indirilenler klasörüne kopyala
+    if (Platform.OS === 'android') {
+      const downloadPath = `${FileSystem.documentDirectory}Download/${fileName}`;
+      await FileSystem.copyAsync({
+        from: filePath,
+        to: downloadPath
       });
-      return true;
-    } catch (error) {
-      console.error('Dosya paylaşılırken hata:', error);
-      throw new Error('Yedek dosyası paylaşılamadı.');
+      return { success: true, filePath: downloadPath };
     }
+    
+    return { success: true, filePath };
   } catch (error) {
     console.error('Yedekleme hatası:', error);
     throw new Error('Veriler yedeklenirken bir hata oluştu.');
