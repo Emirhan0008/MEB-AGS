@@ -311,12 +311,29 @@ export default function ProfileScreen() {
       // Tüm verileri al
       const allData = await AsyncStorage.multiGet(keysToBackup);
       
-      // Verileri JSON'a dönüştür
+      // Verileri JSON'a dönüştür - güvenli bir şekilde parse etmeye çalış
+      const safeData = allData.map(([key, value]) => {
+        try {
+          // null veya undefined kontrolü
+          if (value === null || value === undefined) {
+            return { key, value: null };
+          }
+          
+          // JSON olarak parse etmeyi dene
+          const parsedValue = JSON.parse(value);
+          return { key, value: parsedValue };
+        } catch (parseError) {
+          // Parse edilemiyorsa orijinal değeri kullan
+          console.log(`${key} için JSON parse hatası, orijinal değer kullanılıyor:`, parseError);
+          return { key, value: value };
+        }
+      });
+      
       const backupData = {
         timestamp: new Date().toISOString(),
         appVersion: Constants.expoConfig?.version || '1.0.0',
         platform: Platform.OS,
-        data: allData.map(([key, value]) => ({ key, value: value ? JSON.parse(value) : null }))
+        data: safeData
       };
       
       // JSON'u string'e dönüştür
@@ -327,6 +344,13 @@ export default function ProfileScreen() {
       const backupFileName = `meb-ags-yedek-${backupDate}.json`;
       const fileUri = FileSystem.documentDirectory + backupFileName;
       
+      // Dizinin var olduğundan emin ol
+      const dirInfo = await FileSystem.getInfoAsync(FileSystem.documentDirectory);
+      if (!dirInfo.exists) {
+        await FileSystem.makeDirectoryAsync(FileSystem.documentDirectory, { intermediates: true });
+      }
+      
+      // Dosyayı yaz
       await FileSystem.writeAsStringAsync(fileUri, backupString, {
         encoding: FileSystem.EncodingType.UTF8
       });
@@ -351,9 +375,9 @@ export default function ProfileScreen() {
         ]
       );
       
-    } catch (error) {
+    } catch (error: any) {
       console.error('Yedekleme hatası:', error);
-      Alert.alert('Hata', 'Veriler yedeklenirken bir hata oluştu.');
+      Alert.alert('Hata', `Veriler yedeklenirken bir hata oluştu: ${error?.message || 'Bilinmeyen hata'}`);
     } finally {
       setIsBackupInProgress(false);
     }
@@ -479,8 +503,12 @@ export default function ProfileScreen() {
 
   // Panoya kopyala
   const copyToClipboard = async (text: string) => {
-    await Clipboard.setString(text);
-    Alert.alert('Başarılı', 'Metin panoya kopyalandı.');
+    if (text) {
+      await Clipboard.setString(text);
+      Alert.alert('Başarılı', 'Metin panoya kopyalandı.');
+    } else {
+      Alert.alert('Hata', 'Kopyalanacak metin bulunamadı.');
+    }
   };
 
   return (
