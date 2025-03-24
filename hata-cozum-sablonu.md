@@ -219,3 +219,53 @@ Bu dosya, projede karşılaşılan hataları ve çözümlerini içerir. Yeni bir
   - Uygulamayı tamamen kapatıp yeniden açın.
   - Uygulama başlatıldığında güncelleme kontrolü yapıldığından emin olun.
   - Gerekirse, uygulamayı yeniden yükleyin veya önbelleği temizleyin.
+
+### 7. Git ve Versiyon Kontrol Hataları
+
+#### Git Pull Çakışması Hatası
+- **Hata Mesajı**: `error: You have not concluded your merge (MERGE_HEAD exists).`
+- **Nedeni**: Git pull işlemi sırasında çakışma oluştu ve merge işlemi tamamlanmadı.
+- **Çözüm**: 
+  - Çakışmaları çözün ve `git commit` ile merge işlemini tamamlayın.
+  - Alternatif olarak, `git merge --abort` ile merge işlemini iptal edin ve tekrar deneyin.
+  - Gerekirse, değişiklikleri kaybetmek istemiyorsanız, önce değişiklikleri stash'e alın: `git stash`
+
+#### Untracked Files Git Push Hatası
+- **Hata Mesajı**: `error: failed to push some refs to [repository]`
+- **Nedeni**: Uzak depoda sizin lokal deponuzda olmayan değişiklikler var.
+- **Çözüm**: 
+  - Önce `git pull origin [branch]` ile uzak depodaki değişiklikleri çekin.
+  - Çakışmaları çözün ve `git commit` ile değişiklikleri kaydedin.
+  - Sonra `git push origin [branch]` ile değişiklikleri gönderin.
+
+#### Git Hook PowerShell Hatası
+- **Hata Mesajı**: `The argument '[path]/post-commit.ps1' to the -File parameter does not exist.`
+- **Nedeni**: Git hook içinde belirtilen PowerShell dosyası bulunamadı.
+- **Çözüm**: 
+  - Hook dosyasındaki dosya yolunu düzeltin, tam yolu kullanın.
+  - Windows'ta, yolları tanımlarken çift ters slash kullanın: `C:\\path\\to\\file.ps1`
+  - Alternatif olarak, hook dosyalarında dosya yolunu `.git/hooks/post-commit.ps1` şeklinde belirtin.
+
+#### Git Post-Commit Hook Çalışmıyor
+- **Hata Mesajı**: Hook çalışmıyor, otomatik push gerçekleşmiyor.
+- **Nedeni**: Post-commit hook dosyasının çalıştırma izni yok veya yanlış formatlanmış.
+- **Çözüm**: 
+  - Hook dosyasının çalıştırma iznini kontrol edin ve gerekirse ekleyin: `chmod +x .git/hooks/post-commit`
+  - Windows'ta, `.bat` dosyası kullanmayı deneyin veya PowerShell scriptini manuel olarak çalıştırın.
+  - Otomatik commit ve push işlemi için `run-auto-push.bat` dosyasını kullanın.
+
+#### Git Credential Helper Hatası
+- **Hata Mesajı**: Sürekli kullanıcı adı ve şifre isteniyor.
+- **Nedeni**: Git kimlik bilgileri kaydedilmemiş.
+- **Çözüm**: 
+  - `git config credential.helper store` komutunu çalıştırın.
+  - Bir kez daha push yapın ve kimlik bilgilerinizi girin, bundan sonra kaydedilecektir.
+  - Windows Kimlik Bilgileri Yöneticisi'nde GitHub kimlik bilgilerinizin kaydedildiğinden emin olun.
+
+#### Scheduled Task PowerShell Hatası
+- **Hata Mesajı**: `Cannot validate argument on parameter 'Trigger'. The argument is null or empty.`
+- **Nedeni**: Görev zamanlayıcısında tanımlanan trigger (tetikleyici) geçersiz.
+- **Çözüm**: 
+  - Trigger parametrelerini düzeltin, geçerli bir zaman aralığı belirtin.
+  - Windows'ta, PowerShell görev zamanlayıcı yerine manuel çalıştırma yöntemini kullanın.
+  - `run-auto-push.bat` dosyasını kullanarak gerektiğinde manuel olarak çalıştırın.
