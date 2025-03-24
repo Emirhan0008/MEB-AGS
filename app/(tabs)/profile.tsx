@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, Alert, Platform, ActivityIndicator, Modal, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { LogOut, Settings, Bell, CircleHelp as HelpCircle, Shield, Star, Camera, Globe, Palette, MessageSquare, Award, BookOpen, ArrowLeft } from 'lucide-react-native';
+import { LogOut, Settings, Bell, CircleHelp as HelpCircle, Shield, Star, Camera, Globe, Palette, MessageSquare, Award, BookOpen, ArrowLeft, Download, Upload, Save } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useStats } from '../../context/StatsContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -13,6 +13,9 @@ import Constants from 'expo-constants';
 import * as Application from 'expo-application';
 import { SharedElement } from 'react-navigation-shared-element';
 import { EventRegister } from 'react-native-event-listeners';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
+import * as DocumentPicker from 'expo-document-picker';
 
 // AsyncStorage anahtarı
 const PROFILE_IMAGE_KEY = 'meb-ags-profile-image';
@@ -31,6 +34,10 @@ export default function ProfileScreen() {
   const [monthStudyMinutes, setMonthStudyMinutes] = useState<number>(0);
   // Interval için ref
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Yedekleme durumunu takip eden state
+  const [isBackupInProgress, setIsBackupInProgress] = useState(false);
+  const [isRestoreInProgress, setIsRestoreInProgress] = useState(false);
   
   // Profil fotoğrafını AsyncStorage'dan yükle
   useEffect(() => {
@@ -286,6 +293,161 @@ export default function ProfileScreen() {
 
   const badge = calculateBadge();
 
+  // AsyncStorage'daki tüm verileri yedekle
+  const backupAllData = async () => {
+    try {
+      setIsBackupInProgress(true);
+      
+      // AsyncStorage'daki tüm anahtarları al
+      const allKeys = await AsyncStorage.getAllKeys();
+      
+      // Yedeklenmesi istenmeyen anahtarları hariç tut
+      const keysToExclude = ['@battery_warning_shown']; // Yedeklenmesi gerekmeyen anahtarlar
+      const keysToBackup = allKeys.filter(key => !keysToExclude.includes(key));
+      
+      // Tüm verileri al
+      const allData = await AsyncStorage.multiGet(keysToBackup);
+      
+      // Verileri JSON'a dönüştür
+      const backupData = {
+        timestamp: new Date().toISOString(),
+        appVersion: Constants.expoConfig?.version || '1.0.0',
+        platform: Platform.OS,
+        data: allData.map(([key, value]) => ({ key, value: value ? JSON.parse(value) : null }))
+      };
+      
+      // JSON'u string'e dönüştür
+      const backupString = JSON.stringify(backupData, null, 2);
+      
+      // Yedek dosyasını oluştur
+      const backupDate = new Date().toISOString().replace(/:/g, '-').replace(/\..+/, '');
+      const backupFileName = `meb-ags-yedek-${backupDate}.json`;
+      const fileUri = FileSystem.documentDirectory + backupFileName;
+      
+      await FileSystem.writeAsStringAsync(fileUri, backupString, {
+        encoding: FileSystem.EncodingType.UTF8
+      });
+      
+      // Paylaşım menüsünü aç
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(fileUri, {
+          mimeType: 'application/json',
+          dialogTitle: 'MEB AGS Verilerinizi Yedekleyin',
+          UTI: 'public.json'
+        });
+        
+        Alert.alert(
+          'Yedekleme Başarılı',
+          'Verileriniz başarıyla yedeklendi. Bu dosyayı güvenli bir yerde saklayın.'
+        );
+      } else {
+        Alert.alert(
+          'Paylaşım Kullanılamıyor',
+          'Cihazınızda paylaşım özelliği kullanılamıyor.'
+        );
+      }
+    } catch (error) {
+      console.error('Yedekleme hatası:', error);
+      Alert.alert('Hata', 'Veriler yedeklenirken bir hata oluştu.');
+    } finally {
+      setIsBackupInProgress(false);
+    }
+  };
+  
+  // Yedekten verileri geri yükle
+  const restoreFromBackup = async () => {
+    try {
+      setIsRestoreInProgress(true);
+      
+      // Kullanıcıdan dosya seçmesini iste
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'application/json',
+        copyToCacheDirectory: true,
+      });
+      
+      if (result.canceled) {
+        return;
+      }
+      
+      // Dosyayı oku
+      const fileUri = result.assets[0].uri;
+      const backupString = await FileSystem.readAsStringAsync(fileUri, {
+        encoding: FileSystem.EncodingType.UTF8
+      });
+      
+      // JSON'u parse et
+      const backupData = JSON.parse(backupString);
+      
+      // Uygulamanın sürüm uyumluluğunu kontrol et
+      const backupVersion = backupData.appVersion || '1.0.0';
+      const currentVersion = Constants.expoConfig?.version || '1.0.0';
+      
+      if (backupVersion !== currentVersion) {
+        // Sürüm farklılığı varsa uyarı göster ama devam et
+        Alert.alert(
+          'Sürüm Farklılığı',
+          `Yedek dosyası ${backupVersion} sürümünden, mevcut uygulama sürümü ise ${currentVersion}. Bazı veriler uyumlu olmayabilir. Devam etmek istiyor musunuz?`,
+          [
+            { text: 'İptal', style: 'cancel' },
+            { 
+              text: 'Devam Et', 
+              onPress: async () => {
+                await applyBackup(backupData);
+              }
+            }
+          ]
+        );
+      } else {
+        // Sürümler aynıysa doğrudan uygula
+        await applyBackup(backupData);
+      }
+    } catch (error) {
+      console.error('Geri yükleme hatası:', error);
+      Alert.alert('Hata', 'Veriler geri yüklenirken bir hata oluştu.');
+    } finally {
+      setIsRestoreInProgress(false);
+    }
+  };
+  
+  // Yedeği uygula
+  const applyBackup = async (backupData: {
+    timestamp: string;
+    appVersion: string;
+    platform: string;
+    data: Array<{ key: string; value: any }>;
+  }) => {
+    try {
+      // Mevcut verileri temizle
+      // Bazı ayarları korumak için önceden hariç tutulan anahtarları silmemeye dikkat et
+      const allKeys = await AsyncStorage.getAllKeys();
+      const keysToExclude = ['@battery_warning_shown']; // Silinmemesi gereken anahtarlar
+      const keysToRemove = allKeys.filter(key => !keysToExclude.includes(key));
+      
+      await AsyncStorage.multiRemove(keysToRemove);
+      
+      // Yedekten gelen verileri geri yükle
+      for (const item of backupData.data) {
+        if (item.key && item.value !== null) {
+          await AsyncStorage.setItem(item.key, JSON.stringify(item.value));
+        }
+      }
+      
+      // Uygulama içi verileri yenile
+      await loadStudyTime();
+      
+      // EventRegister ile diğer bileşenlere bildir
+      EventRegister.emit('forceReloadStudyTime', true);
+      
+      Alert.alert(
+        'Geri Yükleme Başarılı',
+        'Verileriniz başarıyla geri yüklendi. Uygulamayı yeniden başlatmanız önerilir.'
+      );
+    } catch (error) {
+      console.error('Yedek uygulama hatası:', error);
+      Alert.alert('Hata', 'Yedek uygulanırken bir hata oluştu.');
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar style="light" />
@@ -468,6 +630,42 @@ export default function ProfileScreen() {
           
           <TouchableOpacity 
             style={styles.menuItem}
+            onPress={backupAllData}
+            disabled={isBackupInProgress}
+          >
+            <View style={styles.menuItemLeft}>
+              <View style={[styles.menuItemIcon, { backgroundColor: '#3b82f6' }]}>
+                <Download color="#fff" size={20} />
+              </View>
+              <Text style={styles.menuItemText}>Verileri Yedekle</Text>
+            </View>
+            {isBackupInProgress ? (
+              <ActivityIndicator size="small" color="#3b82f6" />
+            ) : (
+              <Text style={styles.menuItemArrow}>›</Text>
+            )}
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={styles.menuItem}
+            onPress={restoreFromBackup}
+            disabled={isRestoreInProgress}
+          >
+            <View style={styles.menuItemLeft}>
+              <View style={[styles.menuItemIcon, { backgroundColor: '#8b5cf6' }]}>
+                <Upload color="#fff" size={20} />
+              </View>
+              <Text style={styles.menuItemText}>Yedekten Geri Yükle</Text>
+            </View>
+            {isRestoreInProgress ? (
+              <ActivityIndicator size="small" color="#8b5cf6" />
+            ) : (
+              <Text style={styles.menuItemArrow}>›</Text>
+            )}
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={styles.menuItem}
             onPress={() => Alert.alert("Gizlilik Politikası", "Bu özellik yakında kullanıma sunulacaktır.")}
           >
             <View style={styles.menuItemLeft}>
@@ -488,19 +686,6 @@ export default function ProfileScreen() {
                 <MessageSquare color="#fff" size={20} />
               </View>
               <Text style={styles.menuItemText}>Geri Bildirim Gönder</Text>
-            </View>
-            <Text style={styles.menuItemArrow}>›</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={styles.menuItem}
-            onPress={() => Alert.alert("Uygulama Değerlendirme", "Bu özellik yakında kullanıma sunulacaktır.")}
-          >
-            <View style={styles.menuItemLeft}>
-              <View style={[styles.menuItemIcon, { backgroundColor: '#ef4444' }]}>
-                <Star color="#fff" size={20} />
-              </View>
-              <Text style={styles.menuItemText}>Uygulamayı Değerlendir</Text>
             </View>
             <Text style={styles.menuItemArrow}>›</Text>
           </TouchableOpacity>
