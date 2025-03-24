@@ -468,19 +468,16 @@ export default function ProfileScreen() {
               style={styles.settingButton}
               onPress={async () => {
                 try {
-                  await createBackup();
-                  // Son yedekleme tarihini güncelle
-                  const date = await getLastBackupDate();
-                  setLastBackupDate(date);
-                  
-                  Alert.alert(
-                    'Yedekleme Başarılı',
-                    'Verileriniz başarıyla yedeklendi. Yedek dosyasını güvenli bir yerde saklayın.'
-                  );
+                  const result = await createBackup();
+                  if (result) {
+                    // Son yedekleme tarihini güncelle
+                    const date = await getLastBackupDate();
+                    setLastBackupDate(date);
+                  }
                 } catch (error) {
                   Alert.alert(
                     'Yedekleme Hatası',
-                    'Veriler yedeklenirken bir hata oluştu. Lütfen tekrar deneyin.'
+                    error instanceof Error ? error.message : 'Veriler yedeklenirken bir hata oluştu. Lütfen tekrar deneyin.'
                   );
                 }
               }}
