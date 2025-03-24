@@ -14,7 +14,6 @@ import * as Application from 'expo-application';
 import { SharedElement } from 'react-navigation-shared-element';
 import { EventRegister } from 'react-native-event-listeners';
 import * as FileSystem from 'expo-file-system';
-import * as DocumentPicker from 'expo-document-picker';
 
 // AsyncStorage anahtarı
 const PROFILE_IMAGE_KEY = 'meb-ags-profile-image';
@@ -350,6 +349,16 @@ export default function ProfileScreen() {
   // Yedekten verileri geri yükle
   const restoreFromBackup = async () => {
     try {
+      // Şu anda bu özellik kullanılamıyor, bir uyarı göster
+      Alert.alert(
+        'Geçici Olarak Kullanılamıyor',
+        'Yedekten geri yükleme özelliği şu anda bakım modunda. En kısa sürede erişime açılacaktır.',
+        [
+          { text: 'Tamam', style: 'default' }
+        ]
+      );
+      
+      /* Eski kod kaldırıldı
       setIsRestoreInProgress(true);
       
       // Kullanıcıdan dosya seçmesini iste
@@ -394,6 +403,7 @@ export default function ProfileScreen() {
         // Sürümler aynıysa doğrudan uygula
         await applyBackup(backupData);
       }
+      */
     } catch (error) {
       console.error('Geri yükleme hatası:', error);
       Alert.alert('Hata', 'Veriler geri yüklenirken bir hata oluştu.');
