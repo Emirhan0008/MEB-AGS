@@ -1,6 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as FileSystem from 'expo-file-system';
-import { Platform, Alert } from 'react-native';
+import { Platform } from 'react-native';
 
 // Yedeklenecek verilerin anahtarları
 const BACKUP_KEYS = {
@@ -35,7 +34,7 @@ export const createBackup = async () => {
     for (const [key, value] of Object.entries(BACKUP_KEYS)) {
       try {
         // Yedekleme verisini atlayarak sonsuz döngü olmasını engelle
-        if (key === 'BACKUP_DATA') continue;
+        if (key === 'BACKUP_DATA' || key === 'LAST_BACKUP_DATE') continue;
         
         const data = await AsyncStorage.getItem(value);
         if (data) {
@@ -44,33 +43,6 @@ export const createBackup = async () => {
       } catch (error) {
         console.warn(`${key} verisi alınırken hata:`, error);
       }
-    }
-    
-    // Yanlış sorular için fotoğrafları da yedekle
-    try {
-      const wrongQuestionsData = await AsyncStorage.getItem(BACKUP_KEYS.WRONG_QUESTIONS);
-      if (wrongQuestionsData) {
-        const wrongQuestions = JSON.parse(wrongQuestionsData);
-        const images: { [key: string]: string } = {};
-        
-        // Her bir yanlış soru için fotoğrafı base64'e çevir
-        for (const question of wrongQuestions) {
-          if (question.imageUri) {
-            try {
-              const base64 = await FileSystem.readAsStringAsync(question.imageUri, {
-                encoding: FileSystem.EncodingType.Base64,
-              });
-              images[question.id] = base64;
-            } catch (error) {
-              console.warn(`Fotoğraf okunamadı (${question.id}):`, error);
-            }
-          }
-        }
-        
-        backupData.data.wrongQuestionImages = images;
-      }
-    } catch (error) {
-      console.warn('Yanlış soru fotoğrafları yedeklenirken hata:', error);
     }
     
     // Yedek verisini AsyncStorage'a kaydet
@@ -105,45 +77,13 @@ export const restoreBackup = async () => {
     
     // Verileri AsyncStorage'a geri yükle
     for (const [key, value] of Object.entries(backupData.data)) {
-      if (key === 'wrongQuestionImages') continue; // Fotoğrafları ayrı işle
       try {
-        await AsyncStorage.setItem(BACKUP_KEYS[key as keyof typeof BACKUP_KEYS], value);
-      } catch (error) {
-        console.warn(`${key} verisi geri yüklenirken hata:`, error);
-      }
-    }
-    
-    // Yanlış soru fotoğraflarını geri yükle
-    if (backupData.data.wrongQuestionImages) {
-      try {
-        const wrongQuestionsData = await AsyncStorage.getItem(BACKUP_KEYS.WRONG_QUESTIONS);
-        if (wrongQuestionsData) {
-          const wrongQuestions = JSON.parse(wrongQuestionsData);
-          
-          // Her bir fotoğrafı dosya sistemine kaydet
-          for (const question of wrongQuestions) {
-            if (backupData.data.wrongQuestionImages[question.id]) {
-              try {
-                const base64 = backupData.data.wrongQuestionImages[question.id];
-                const fileName = `wrong-question-${question.id}.jpg`;
-                const filePath = `${FileSystem.documentDirectory}${fileName}`;
-                
-                await FileSystem.writeAsStringAsync(filePath, base64, {
-                  encoding: FileSystem.EncodingType.Base64,
-                });
-                
-                question.imageUri = filePath;
-              } catch (error) {
-                console.warn(`Fotoğraf kaydedilemedi (${question.id}):`, error);
-              }
-            }
-          }
-          
-          // Güncellenmiş yanlış soruları kaydet
-          await AsyncStorage.setItem(BACKUP_KEYS.WRONG_QUESTIONS, JSON.stringify(wrongQuestions));
+        const storageKey = BACKUP_KEYS[key as keyof typeof BACKUP_KEYS];
+        if (storageKey) {
+          await AsyncStorage.setItem(storageKey, value as string);
         }
       } catch (error) {
-        console.warn('Yanlış soru fotoğrafları geri yüklenirken hata:', error);
+        console.warn(`${key} verisi geri yüklenirken hata:`, error);
       }
     }
     
