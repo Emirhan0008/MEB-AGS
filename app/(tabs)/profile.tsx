@@ -7,11 +7,9 @@ import { useRouter } from 'expo-router';
 import { useStats } from '../../context/StatsContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
-import ConfettiCannon from 'react-native-confetti-cannon';
-import theme from '../../constants/theme';
+import colors from '../../utils/colors';
 import Constants from 'expo-constants';
 import * as Application from 'expo-application';
-import { SharedElement } from 'react-navigation-shared-element';
 import { EventRegister } from 'react-native-event-listeners';
 import { createBackup, restoreBackup, getLastBackupDate } from '../../utils/backup';
 import { ChevronRight } from 'lucide-react-native';
@@ -466,7 +464,7 @@ export default function ProfileScreen() {
             <Text style={styles.sectionTitle}>Veri Yönetimi</Text>
             
             <TouchableOpacity
-              style={[styles.settingItem, { backgroundColor: theme.colors.green }]}
+              style={[styles.settingItem, { backgroundColor: colors.green }]}
               onPress={async () => {
                 try {
                   const result = await createBackup();
@@ -492,7 +490,7 @@ export default function ProfileScreen() {
             </TouchableOpacity>
 
             <TouchableOpacity 
-              style={[styles.settingItem, { backgroundColor: theme.colors.blue }]}
+              style={[styles.settingItem, { backgroundColor: colors.blue }]}
               onPress={async () => {
                 Alert.alert(
                   'Uyarı', 
