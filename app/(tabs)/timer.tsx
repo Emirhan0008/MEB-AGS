@@ -121,6 +121,44 @@ const CircularProgress: React.FC<CircularProgressProps> = ({ progress, size, str
   );
 };
 
+// Ekranın yanıp sönmesi için efekt bileşeni
+const FlashEffect = () => {
+  const flashOpacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    // 3 saniyelik yanıp sönme animasyonu
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(flashOpacity, {
+          toValue: 0.7, // Maksimum opaklık değeri
+          duration: 300,
+          easing: Easing.ease,
+          useNativeDriver: true,
+        }),
+        Animated.timing(flashOpacity, {
+          toValue: 0,
+          duration: 300,
+          easing: Easing.ease,
+          useNativeDriver: true,
+        }),
+      ]),
+      { iterations: 5 } // 5 kez yanıp sönme (yaklaşık 3 saniye)
+    ).start();
+  }, []);
+
+  return (
+    <Animated.View 
+      style={[
+        StyleSheet.absoluteFill,
+        styles.flashEffect,
+        {
+          opacity: flashOpacity,
+        }
+      ]}
+    />
+  );
+};
+
 export default function TimerScreen() {
   const [activeTab, setActiveTab] = useState<'pomodoro' | 'stopwatch' | 'countdown'>('pomodoro');
   const router = useRouter();
@@ -264,6 +302,7 @@ function PomodoroTimer() {
   // Animasyon değeri
   const pulseAnim = useRef(new Animated.Value(0)).current;
   const [showCompletionEffect, setShowCompletionEffect] = useState(false);
+  const [showFlashEffect, setShowFlashEffect] = useState(false);
   
   // Timer modunu pomodoro olarak ayarla
   useEffect(() => {
@@ -275,6 +314,7 @@ function PomodoroTimer() {
     // Eğer timer aktif değilse ve ilerleme 1'e eşitse (tamamlandıysa)
     if (!timerData.isActive && getProgress() >= 0.99 && timerData.elapsedTime > 0) {
       setShowCompletionEffect(true);
+      setShowFlashEffect(true);
       
       // Titreşim efekti
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -299,9 +339,15 @@ function PomodoroTimer() {
       ).start(() => {
         // Animasyon tamamlandığında efekti kaldır
         setShowCompletionEffect(false);
+        
+        // 3 saniye sonra flash efektini kaldır
+        setTimeout(() => {
+          setShowFlashEffect(false);
+        }, 3000);
       });
     } else {
       setShowCompletionEffect(false);
+      setShowFlashEffect(false);
     }
   }, [timerData.isActive, timerData.elapsedTime, getProgress]);
   
@@ -357,6 +403,9 @@ function PomodoroTimer() {
   
   return (
     <View style={styles.timerContainer}>
+      {/* Yanıp sönme efekti */}
+      {showFlashEffect && <FlashEffect />}
+      
       {/* Tamamlanma efekti */}
       {showCompletionEffect && (
         <Animated.View 
@@ -374,7 +423,11 @@ function PomodoroTimer() {
           ]}
         >
           <Text style={styles.completionText}>
-            {timerData.pomodoroState === 'work' ? 'Çalışma Tamamlandı!' : 'Mola Tamamlandı!'}
+            {timerData.pomodoroState === 'work' 
+              ? 'Çalışma Süresi Tamamlandı!' 
+              : timerData.pomodoroState === 'shortBreak' 
+                ? 'Kısa Mola Tamamlandı!' 
+                : 'Uzun Mola Tamamlandı!'}
           </Text>
         </Animated.View>
       )}
@@ -551,6 +604,7 @@ function CountdownTimer() {
   // Animasyon değeri
   const pulseAnim = useRef(new Animated.Value(0)).current;
   const [showCompletionEffect, setShowCompletionEffect] = useState(false);
+  const [showFlashEffect, setShowFlashEffect] = useState(false);
   
   // Timer modunu countdown olarak ayarla
   useEffect(() => {
@@ -562,6 +616,7 @@ function CountdownTimer() {
     // Eğer timer aktif değilse ve ilerleme 1'e eşitse (tamamlandıysa)
     if (!timerData.isActive && getProgress() >= 0.99 && timerData.elapsedTime > 0 && timerData.totalTime && timerData.elapsedTime >= timerData.totalTime) {
       setShowCompletionEffect(true);
+      setShowFlashEffect(true);
       
       // Titreşim efekti
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -586,9 +641,15 @@ function CountdownTimer() {
       ).start(() => {
         // Animasyon tamamlandığında efekti kaldır
         setShowCompletionEffect(false);
+        
+        // 3 saniye sonra flash efektini kaldır
+        setTimeout(() => {
+          setShowFlashEffect(false);
+        }, 3000);
       });
     } else {
       setShowCompletionEffect(false);
+      setShowFlashEffect(false);
     }
   }, [timerData.isActive, timerData.elapsedTime, timerData.totalTime, getProgress]);
   
@@ -688,6 +749,9 @@ function CountdownTimer() {
   
   return (
     <View style={styles.timerContainer}>
+      {/* Yanıp sönme efekti */}
+      {showFlashEffect && <FlashEffect />}
+      
       {/* Tamamlanma efekti */}
       {showCompletionEffect && (
         <Animated.View 
@@ -1140,5 +1204,10 @@ const styles = StyleSheet.create({
     padding: 20,
     backgroundColor: 'rgba(59, 130, 246, 0.8)',
     borderRadius: 12,
+  },
+  flashEffect: {
+    backgroundColor: '#3b82f6', // Mavi renk
+    zIndex: 999, // En üstte görünmesi için
+    pointerEvents: 'none', // Dokunma etkileşimlerini engellemeyecek
   },
 });
