@@ -11,9 +11,10 @@ import colors from '../../utils/colors';
 import Constants from 'expo-constants';
 import * as Application from 'expo-application';
 import { EventRegister } from 'react-native-event-listeners';
-import { createBackup, restoreBackup, getLastBackupDate } from '../../utils/backup';
+import { createBackup, restoreBackup, getLastBackupDate, exportBackupAsText, importBackupFromText } from '../../utils/backup';
 import { ChevronRight } from 'lucide-react-native';
 import { Ionicons } from '@expo/vector-icons';
+import promptAndroid from 'react-native-prompt-android';
 
 // AsyncStorage anahtarı
 const PROFILE_IMAGE_KEY = 'meb-ags-profile-image';
@@ -298,6 +299,25 @@ export default function ProfileScreen() {
     loadLastBackupDate();
   }, []);
 
+  // Yedek geri yükleme işlevi (hem iOS hem Android için)
+  const handleImportBackupCode = async (code: string) => {
+    try {
+      const result = await importBackupFromText(code);
+      if (result.success) {
+        Alert.alert(
+          'Başarılı', 
+          'Yedek başarıyla içe aktarıldı ve uygulandı! Değişikliklerin tamamen uygulanması için uygulamayı yeniden başlatın.',
+          [{ text: 'Tamam' }]
+        );
+      } else {
+        Alert.alert('Hata', result.message || 'Yedek içe aktarılırken bir hata oluştu.');
+      }
+    } catch (error) {
+      console.error('Yedek içe aktarma hatası:', error);
+      Alert.alert('Hata', 'Yedek içe aktarılırken bir hata oluştu.');
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar style="light" />
@@ -526,6 +546,88 @@ export default function ProfileScreen() {
             >
               <Ionicons name="refresh-outline" size={24} color="#fff" />
               <Text style={[styles.settingText, { color: '#fff' }]}>Yedekten Geri Yükle</Text>
+            </TouchableOpacity>
+            
+            {/* Cihazlar arası yedek paylaşımı */}
+            <TouchableOpacity 
+              style={[styles.settingItem, { backgroundColor: '#8b5cf6' }]}
+              onPress={async () => {
+                try {
+                  const result = await exportBackupAsText();
+                  if (result.success) {
+                    Alert.alert(
+                      'Başarılı', 
+                      'Yedek kodu panoya kopyalandı. Bu kodu başka bir cihaza aktarmak için kaydedebilir veya paylaşabilirsiniz.',
+                      [{ text: 'Tamam' }]
+                    );
+                  } else {
+                    Alert.alert('Hata', result.message || 'Yedek dışa aktarılırken bir hata oluştu.');
+                  }
+                } catch (error) {
+                  console.error('Yedek dışa aktarma hatası:', error);
+                  Alert.alert('Hata', 'Yedek dışa aktarılırken bir hata oluştu.');
+                }
+              }}
+            >
+              <Ionicons name="share-outline" size={24} color="#fff" />
+              <Text style={[styles.settingText, { color: '#fff' }]}>Yedek Kodunu Paylaş</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={[styles.settingItem, { backgroundColor: '#f59e0b' }]}
+              onPress={() => {
+                if (Platform.OS === 'ios') {
+                  Alert.prompt(
+                    'Yedek Kodunu Girin',
+                    'Lütfen diğer cihazdan aldığınız yedek kodunu yapıştırın:',
+                    [
+                      {
+                        text: 'İptal',
+                        style: 'cancel',
+                      },
+                      {
+                        text: 'İçe Aktar',
+                        onPress: async (code) => {
+                          if (!code) {
+                            Alert.alert('Hata', 'Geçerli bir kod girmelisiniz.');
+                            return;
+                          }
+                          
+                          handleImportBackupCode(code);
+                        },
+                      },
+                    ],
+                    'plain-text',
+                  );
+                } else {
+                  // Android için prompt
+                  promptAndroid(
+                    'Yedek Kodunu Girin',
+                    'Lütfen diğer cihazdan aldığınız yedek kodunu yapıştırın:',
+                    [
+                      { text: 'İptal', onPress: () => console.log('Cancelled') },
+                      { 
+                        text: 'İçe Aktar', 
+                        onPress: (code) => {
+                          if (!code) {
+                            Alert.alert('Hata', 'Geçerli bir kod girmelisiniz.');
+                            return;
+                          }
+                          
+                          handleImportBackupCode(code);
+                        }
+                      },
+                    ],
+                    {
+                      type: 'default',
+                      cancelable: true,
+                    }
+                  );
+                }
+              }}
+            >
+              <Ionicons name="code-download-outline" size={24} color="#fff" />
+              <Text style={[styles.settingText, { color: '#fff' }]}>Yedek Kodu İle Geri Yükle</Text>
             </TouchableOpacity>
             
             {lastBackupDate && (

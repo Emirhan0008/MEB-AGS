@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Platform } from 'react-native';
+import { Platform, Alert, Clipboard } from 'react-native';
 
 // Yedeklenecek verilerin anahtarları
 const BACKUP_KEYS = {
@@ -102,5 +102,73 @@ export const getLastBackupDate = async () => {
   } catch (error) {
     console.error('Son yedekleme tarihi alınırken hata:', error);
     return null;
+  }
+};
+
+// Yeni eklenen fonksiyonlar - cihazlar arası yedekleme için
+
+// Yedeği metin olarak dışa aktar (panoya kopyalar)
+export const exportBackupAsText = async () => {
+  try {
+    // Yedek verisini oku
+    const backupString = await AsyncStorage.getItem(BACKUP_KEYS.BACKUP_DATA);
+    if (!backupString) {
+      return { success: false, message: "Yedek bulunamadı" };
+    }
+    
+    // Base64 kodlaması yap (daha güvenli ve metin olarak paylaşılabilir)
+    const base64Backup = btoa(backupString);
+    
+    // Panoya kopyala
+    await Clipboard.setString(base64Backup);
+    
+    return { 
+      success: true, 
+      message: "Yedek kodu panoya kopyalandı. Bu kodu başka bir cihazda kullanabilirsiniz.", 
+      backupCode: base64Backup 
+    };
+  } catch (error) {
+    console.error('Yedek dışa aktarma hatası:', error);
+    return { success: false, message: "Yedek dışa aktarılırken bir hata oluştu" };
+  }
+};
+
+// Metin olarak alınan yedeği içe aktar
+export const importBackupFromText = async (backupCode: string) => {
+  try {
+    if (!backupCode || backupCode.trim() === '') {
+      return { success: false, message: "Geçerli bir yedek kodu girilmedi" };
+    }
+    
+    // Base64 çözümle
+    let backupString: string;
+    try {
+      backupString = atob(backupCode.trim());
+    } catch (e) {
+      return { success: false, message: "Geçersiz yedek kodu formatı" };
+    }
+    
+    // JSON formatını doğrula
+    let backupData: any;
+    try {
+      backupData = JSON.parse(backupString);
+    } catch (e) {
+      return { success: false, message: "Yedek kodu doğru formatta değil" };
+    }
+    
+    // Yedek dosyası versiyonunu kontrol et
+    if (!backupData.version) {
+      return { success: false, message: "Geçersiz yedek dosyası formatı" };
+    }
+    
+    // AsyncStorage'a kaydet
+    await AsyncStorage.setItem(BACKUP_KEYS.BACKUP_DATA, backupString);
+    
+    // Hemen geri yükle
+    return await restoreBackup();
+    
+  } catch (error) {
+    console.error('Yedek içe aktarma hatası:', error);
+    return { success: false, message: "Yedek içe aktarılırken bir hata oluştu" };
   }
 }; 
