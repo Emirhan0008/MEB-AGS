@@ -463,70 +463,9 @@ export default function ProfileScreen() {
           <View style={styles.settingsSection}>
             <Text style={styles.sectionTitle}>Veri Yönetimi</Text>
             
-            <TouchableOpacity
-              style={[styles.settingItem, { backgroundColor: colors.green }]}
-              onPress={async () => {
-                try {
-                  const result = await createBackup();
-                  if (result.success) {
-                    Alert.alert(
-                      'Başarılı', 
-                      'Verileriniz başarıyla yedeklendi!',
-                      [{ text: 'Tamam' }]
-                    );
-                    // Son yedekleme tarihini güncelle
-                    setLastBackupDate(new Date());
-                  } else {
-                    Alert.alert('Hata', result.message || 'Yedekleme sırasında bir hata oluştu.');
-                  }
-                } catch (error) {
-                  console.error('Yedekleme hatası:', error);
-                  Alert.alert('Hata', 'Yedekleme sırasında bir hata oluştu.');
-                }
-              }}
-            >
-              <Ionicons name="cloud-upload-outline" size={24} color="#fff" />
-              <Text style={[styles.settingText, { color: '#fff' }]}>Veri Yedekle</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={[styles.settingItem, { backgroundColor: colors.blue }]}
-              onPress={async () => {
-                Alert.alert(
-                  'Uyarı', 
-                  'Yedekten geri yükleme işlemi mevcut verilerinizin üzerine yazacaktır. Devam etmek istiyor musunuz?',
-                  [
-                    { 
-                      text: 'İptal', 
-                      style: 'cancel' 
-                    },
-                    { 
-                      text: 'Devam Et', 
-                      onPress: async () => {
-                        try {
-                          const result = await restoreBackup();
-                          if (result.success) {
-                            Alert.alert(
-                              'Başarılı', 
-                              'Verileriniz başarıyla geri yüklendi! Değişikliklerin uygulanması için uygulamayı yeniden başlatın.',
-                              [{ text: 'Tamam' }]
-                            );
-                          } else {
-                            Alert.alert('Hata', result.message || 'Geri yükleme sırasında bir hata oluştu.');
-                          }
-                        } catch (error) {
-                          console.error('Geri yükleme hatası:', error);
-                          Alert.alert('Hata', 'Geri yükleme sırasında bir hata oluştu.');
-                        }
-                      } 
-                    }
-                  ]
-                );
-              }}
-            >
-              <Ionicons name="cloud-download-outline" size={24} color="#fff" />
-              <Text style={[styles.settingText, { color: '#fff' }]}>Yedekten Geri Yükle</Text>
-            </TouchableOpacity>
+            <View style={styles.disabledMessageContainer}>
+              <Text style={styles.disabledMessage}>Yedekleme özelliği bakımda. Çok yakında tekrar aktif olacak.</Text>
+            </View>
           </View>
         </View>
         
@@ -882,16 +821,16 @@ const styles = StyleSheet.create({
   settingsSection: {
     marginBottom: 20,
   },
-  settingItem: {
-    flexDirection: 'row',
+  disabledMessageContainer: {
+    backgroundColor: '#475569',
+    borderRadius: 8,
+    padding: 16,
+    marginBottom: 10,
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#334155',
   },
-  settingText: {
-    fontSize: 16,
+  disabledMessage: {
     color: '#fff',
+    fontSize: 14,
+    textAlign: 'center',
   },
 });
