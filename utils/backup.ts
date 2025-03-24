@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform, Alert, Clipboard } from 'react-native';
+import base64 from 'base-64';
 
 // Yedeklenecek verilerin anahtarları
 const BACKUP_KEYS = {
@@ -117,7 +118,7 @@ export const exportBackupAsText = async () => {
     }
     
     // Base64 kodlaması yap (daha güvenli ve metin olarak paylaşılabilir)
-    const base64Backup = btoa(backupString);
+    const base64Backup = base64.encode(backupString);
     
     // Panoya kopyala
     await Clipboard.setString(base64Backup);
@@ -143,7 +144,7 @@ export const importBackupFromText = async (backupCode: string) => {
     // Base64 çözümle
     let backupString: string;
     try {
-      backupString = atob(backupCode.trim());
+      backupString = base64.decode(backupCode.trim());
     } catch (e) {
       return { success: false, message: "Geçersiz yedek kodu formatı" };
     }

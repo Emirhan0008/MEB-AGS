@@ -302,6 +302,11 @@ export default function ProfileScreen() {
   // Yedek geri yükleme işlevi (hem iOS hem Android için)
   const handleImportBackupCode = async (code: string) => {
     try {
+      if (!code || code.trim() === '') {
+        Alert.alert('Hata', 'Geçerli bir kod girmelisiniz.');
+        return;
+      }
+      
       const result = await importBackupFromText(code);
       if (result.success) {
         Alert.alert(
@@ -576,53 +581,73 @@ export default function ProfileScreen() {
             <TouchableOpacity 
               style={[styles.settingItem, { backgroundColor: '#f59e0b' }]}
               onPress={() => {
-                if (Platform.OS === 'ios') {
-                  Alert.prompt(
-                    'Yedek Kodunu Girin',
-                    'Lütfen diğer cihazdan aldığınız yedek kodunu yapıştırın:',
-                    [
-                      {
-                        text: 'İptal',
-                        style: 'cancel',
-                      },
-                      {
-                        text: 'İçe Aktar',
-                        onPress: async (code) => {
-                          if (!code) {
-                            Alert.alert('Hata', 'Geçerli bir kod girmelisiniz.');
-                            return;
-                          }
-                          
-                          handleImportBackupCode(code);
+                try {
+                  if (Platform.OS === 'ios') {
+                    Alert.prompt(
+                      'Yedek Kodunu Girin',
+                      'Lütfen diğer cihazdan aldığınız yedek kodunu yapıştırın:',
+                      [
+                        {
+                          text: 'İptal',
+                          style: 'cancel',
                         },
-                      },
-                    ],
-                    'plain-text',
-                  );
-                } else {
-                  // Android için prompt
-                  promptAndroid(
-                    'Yedek Kodunu Girin',
-                    'Lütfen diğer cihazdan aldığınız yedek kodunu yapıştırın:',
-                    [
-                      { text: 'İptal', onPress: () => console.log('Cancelled') },
-                      { 
-                        text: 'İçe Aktar', 
-                        onPress: (code) => {
-                          if (!code) {
-                            Alert.alert('Hata', 'Geçerli bir kod girmelisiniz.');
-                            return;
-                          }
-                          
-                          handleImportBackupCode(code);
+                        {
+                          text: 'İçe Aktar',
+                          onPress: async (code) => {
+                            if (!code) {
+                              Alert.alert('Hata', 'Geçerli bir kod girmelisiniz.');
+                              return;
+                            }
+                            
+                            handleImportBackupCode(code);
+                          },
+                        },
+                      ],
+                      'plain-text',
+                    );
+                  } else {
+                    // Android için prompt
+                    try {
+                      promptAndroid(
+                        'Yedek Kodunu Girin',
+                        'Lütfen diğer cihazdan aldığınız yedek kodunu yapıştırın:',
+                        [
+                          { text: 'İptal', onPress: () => console.log('Cancelled') },
+                          { 
+                            text: 'İçe Aktar', 
+                            onPress: (code) => {
+                              try {
+                                if (!code) {
+                                  Alert.alert('Hata', 'Geçerli bir kod girmelisiniz.');
+                                  return;
+                                }
+                                
+                                handleImportBackupCode(code);
+                              } catch (error) {
+                                console.error('Kod işleme hatası:', error);
+                                Alert.alert('Hata', 'Yedek kodu işlenirken bir hata oluştu.');
+                              }
+                            }
+                          },
+                        ],
+                        {
+                          type: 'default',
+                          cancelable: true,
                         }
-                      },
-                    ],
-                    {
-                      type: 'default',
-                      cancelable: true,
+                      );
+                    } catch (promptError) {
+                      console.error('Android prompt hatası:', promptError);
+                      // Alternative yöntem - TextInput ile bir modal göster
+                      Alert.alert(
+                        'Yedek Kodu İle Geri Yükleme',
+                        'Bu özellik şu anda bakımdadır. Lütfen daha sonra tekrar deneyin.',
+                        [{ text: 'Tamam' }]
+                      );
                     }
-                  );
+                  }
+                } catch (error) {
+                  console.error('Genel hata:', error);
+                  Alert.alert('Hata', 'Beklenmeyen bir hata oluştu. Lütfen daha sonra tekrar deneyin.');
                 }
               }}
             >

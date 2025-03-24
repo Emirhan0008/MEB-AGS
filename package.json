@@ -27,6 +27,7 @@
     "@react-native-community/datetimepicker": "8.2.0",
     "@react-navigation/bottom-tabs": "^7.2.0",
     "@react-navigation/native": "^7.0.14",
+    "base-64": "^1.0.0",
     "expo": "~52.0.38",
     "expo-background-fetch": "~13.0.5",
     "expo-blur": "^14.0.3",
@@ -68,6 +69,7 @@
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
+    "@types/base-64": "^1.0.2",
     "@types/react": "~18.3.12",
     "@typescript-eslint/eslint-plugin": "^7.4.0",
     "@typescript-eslint/parser": "^7.4.0",
