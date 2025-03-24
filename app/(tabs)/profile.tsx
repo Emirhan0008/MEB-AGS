@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, Alert, Platform, ActivityIndicator, Modal, TextInput, Clipboard, Share } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, Alert, Platform, ActivityIndicator, Modal, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { LogOut, Settings, Bell, CircleHelp as HelpCircle, Shield, Star, Camera, Globe, Palette, MessageSquare, Award, BookOpen, ArrowLeft, Download, Upload, Save } from 'lucide-react-native';
+import { LogOut, Settings, Bell, CircleHelp as HelpCircle, Shield, Star, Camera, Globe, Palette, MessageSquare, Award, BookOpen, ArrowLeft, Save, RotateCcw } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useStats } from '../../context/StatsContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -13,10 +13,8 @@ import Constants from 'expo-constants';
 import * as Application from 'expo-application';
 import { SharedElement } from 'react-navigation-shared-element';
 import { EventRegister } from 'react-native-event-listeners';
-import * as FileSystem from 'expo-file-system';
-import * as Sharing from 'expo-sharing';
-import * as DocumentPicker from 'expo-document-picker';
-import * as MediaLibrary from 'expo-media-library';
+import { createBackup, restoreBackup, getLastBackupDate } from '../../utils/backup';
+import { ChevronRight } from 'lucide-react-native';
 
 // AsyncStorage anahtarı
 const PROFILE_IMAGE_KEY = 'meb-ags-profile-image';
@@ -33,17 +31,9 @@ export default function ProfileScreen() {
   const [todayStudyMinutes, setTodayStudyMinutes] = useState<number>(0);
   const [weekStudyMinutes, setWeekStudyMinutes] = useState<number>(0);
   const [monthStudyMinutes, setMonthStudyMinutes] = useState<number>(0);
+  const [lastBackupDate, setLastBackupDate] = useState<Date | null>(null);
   // Interval için ref
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  
-  // Yedekleme durumunu takip eden state
-  const [isBackupInProgress, setIsBackupInProgress] = useState(false);
-  const [isRestoreInProgress, setIsRestoreInProgress] = useState(false);
-  
-  // Yedek içe aktarma modal'ı için state
-  const [isImportModalVisible, setIsImportModalVisible] = useState(false);
-  const [backupJsonText, setBackupJsonText] = useState('');
-  const [backupFilePath, setBackupFilePath] = useState('');
   
   // Profil fotoğrafını AsyncStorage'dan yükle
   useEffect(() => {
@@ -299,638 +289,15 @@ export default function ProfileScreen() {
 
   const badge = calculateBadge();
 
-  // AsyncStorage'daki tüm verileri yedekle
-  const backupAllData = async () => {
-    try {
-      setIsBackupInProgress(true);
-      
-      // Yedekleme dizini oluştur
-      const backupDate = new Date().toISOString().replace(/:/g, '-').replace(/\..+/, '');
-      const backupFileName = `meb-ags-yedek-${backupDate}.mebags`;
-      const tempBackupDir = FileSystem.cacheDirectory + backupFileName + '/';
-      
-      // Dizini temizle ve yeniden oluştur
-      const dirInfo = await FileSystem.getInfoAsync(tempBackupDir);
-      if (dirInfo.exists) {
-        await FileSystem.deleteAsync(tempBackupDir);
-      }
-      await FileSystem.makeDirectoryAsync(tempBackupDir, { intermediates: true });
-      
-      // 1. AsyncStorage verilerini yedekle
-      const allKeys = await AsyncStorage.getAllKeys();
-      const keysToExclude = ['@battery_warning_shown']; // Yedeklenmesi gerekmeyen anahtarlar
-      const keysToBackup = allKeys.filter(key => !keysToExclude.includes(key));
-      const allData = await AsyncStorage.multiGet(keysToBackup);
-      
-      // Verileri JSON'a dönüştür - güvenli bir şekilde parse etmeye çalış
-      const safeData = allData.map(([key, value]) => {
-        try {
-          if (value === null || value === undefined) {
-            return { key, value: null };
-          }
-          
-          const parsedValue = JSON.parse(value);
-          return { key, value: parsedValue };
-        } catch (parseError) {
-          console.log(`${key} için JSON parse hatası, orijinal değer kullanılıyor:`, parseError);
-          return { key, value: value };
-        }
-      });
-      
-      const backupData = {
-        timestamp: new Date().toISOString(),
-        appVersion: Constants.expoConfig?.version || '1.0.0',
-        platform: Platform.OS,
-        data: safeData
-      };
-      
-      // Meta veri dosyasını oluştur
-      const metaFilePath = tempBackupDir + 'meta.json';
-      await FileSystem.writeAsStringAsync(metaFilePath, JSON.stringify(backupData, null, 2), {
-        encoding: FileSystem.EncodingType.UTF8
-      });
-      
-      // 2. Profil fotoğrafını yedekle
-      let backupImageList = [];
-      if (profileImage) {
-        const profileImgExt = profileImage.split('.').pop() || 'jpg';
-        const profileImgDestPath = tempBackupDir + `profile.${profileImgExt}`;
-        
-        try {
-          await FileSystem.copyAsync({
-            from: profileImage,
-            to: profileImgDestPath
-          });
-          backupImageList.push({
-            type: 'profile',
-            originalPath: profileImage,
-            backupPath: `profile.${profileImgExt}`
-          });
-        } catch (imgError) {
-          console.error('Profil fotoğrafı yedeklenirken hata oluştu:', imgError);
-        }
-      }
-      
-      // 3. Deneme fotoğraflarını yedekle
-      try {
-        const examsStorageKey = '@meb_ags_exam_results';
-        const examsDataStr = await AsyncStorage.getItem(examsStorageKey);
-        
-        if (examsDataStr) {
-          const examsData = JSON.parse(examsDataStr);
-          
-          // Fotoğrafları ara ve yedekle
-          const photoPromises = [];
-          
-          for (let examIndex = 0; examIndex < examsData.length; examIndex++) {
-            const exam = examsData[examIndex];
-            
-            if (exam.mistakes && exam.mistakes.length > 0) {
-              // Sınav yanlışları dizini oluştur
-              const examDir = tempBackupDir + `exam_${examIndex}/`;
-              await FileSystem.makeDirectoryAsync(examDir, { intermediates: true });
-              
-              // Her hata fotoğrafını yedekle
-              for (let mistakeIndex = 0; mistakeIndex < exam.mistakes.length; mistakeIndex++) {
-                const mistake = exam.mistakes[mistakeIndex];
-                if (mistake.uri) {
-                  const imgExt = mistake.uri.split('.').pop() || 'jpg';
-                  const destFileName = `mistake_${mistakeIndex}.${imgExt}`;
-                  const destPath = examDir + destFileName;
-                  
-                  photoPromises.push(
-                    FileSystem.copyAsync({
-                      from: mistake.uri,
-                      to: destPath
-                    }).then(() => {
-                      backupImageList.push({
-                        type: 'mistake',
-                        examId: exam.id,
-                        mistakeId: mistake.id,
-                        originalPath: mistake.uri,
-                        backupPath: `exam_${examIndex}/${destFileName}`
-                      });
-                    }).catch(err => {
-                      console.error(`Hata fotoğrafı yedeklenirken hata: ${mistake.uri}`, err);
-                    })
-                  );
-                }
-              }
-            }
-          }
-          
-          // Tüm fotoğraf kopyalama işlemlerini bekle
-          await Promise.all(photoPromises);
-        }
-      } catch (examsError) {
-        console.error('Deneme fotoğrafları yedeklenirken hata oluştu:', examsError);
-      }
-      
-      // 4. Görüntü haritası oluştur
-      const imageMapPath = tempBackupDir + 'images.json';
-      await FileSystem.writeAsStringAsync(imageMapPath, JSON.stringify(backupImageList, null, 2), {
-        encoding: FileSystem.EncodingType.UTF8
-      });
-      
-      // 5. Tüm dosyaları bir zip dosyasına dönüştür (aslında bu bir klasör)
-      const backupPath = FileSystem.documentDirectory + backupFileName;
-      
-      // Dizinin var olduğundan emin ol
-      const docDirInfo = await FileSystem.getInfoAsync(FileSystem.documentDirectory);
-      if (!docDirInfo.exists) {
-        await FileSystem.makeDirectoryAsync(FileSystem.documentDirectory, { intermediates: true });
-      }
-      
-      // Geçici dizini kopyala
-      await FileSystem.copyAsync({
-        from: tempBackupDir,
-        to: backupPath
-      });
-      
-      // Geçici dizini temizle
-      await FileSystem.deleteAsync(tempBackupDir, { idempotent: true });
-      
-      // Yedek dosyasının URI'sini al
-      const backupURI = Platform.OS === 'ios' ? backupPath : `file://${backupPath}`;
-      
-      try {
-        // Paylaşım izinlerini kontrol et ve yedek dosyasını paylaş
-        const canShare = await Sharing.isAvailableAsync();
-        
-        if (canShare) {
-          await Sharing.shareAsync(backupURI, {
-            mimeType: 'application/octet-stream',
-            UTI: 'com.mebags.archive',
-            dialogTitle: 'MEB AGS Veri Yedeği'
-          });
-          
-          Alert.alert(
-            'Yedekleme Başarılı',
-            'Yedek dosyası başarıyla oluşturuldu ve paylaşıldı. Bu dosyayı güvenli bir yerde saklayın.'
-          );
-        } else {
-          // Paylaşım mümkün değilse, kullanıcıya dosya yolu gösterilir
-          Alert.alert(
-            'Yedekleme Başarılı',
-            `Yedek dosyası oluşturuldu: ${backupPath}\n\nBu dosyayı manuel olarak cihazınızdan kopyalayabilirsiniz.`
-          );
-        }
-      } catch (shareError) {
-        console.error('Paylaşım hatası:', shareError);
-        
-        // Paylaşım API'si hata verirse MediaLibrary'ye kaydet
-        try {
-          const mediaPerms = await MediaLibrary.requestPermissionsAsync();
-          
-          if (mediaPerms.granted) {
-            const asset = await MediaLibrary.createAssetAsync(backupURI);
-            const album = await MediaLibrary.getAlbumAsync('MEB AGS Yedekleri');
-            
-            if (album) {
-              await MediaLibrary.addAssetsToAlbumAsync([asset], album, false);
-            } else {
-              await MediaLibrary.createAlbumAsync('MEB AGS Yedekleri', asset, false);
-            }
-            
-            Alert.alert(
-              'Yedekleme Başarılı',
-              'Yedek dosyası fotoğraf galerinize kaydedildi. "MEB AGS Yedekleri" klasöründe bulabilirsiniz.'
-            );
-          } else {
-            Alert.alert(
-              'Yedekleme Başarılı',
-              `Yedek dosyası şu konumda oluşturuldu: ${backupPath}\n\nBu dosyayı manuel olarak cihazınızdan kopyalayabilirsiniz.`
-            );
-          }
-        } catch (mediaError) {
-          Alert.alert(
-            'Yedekleme Başarılı',
-            `Yedek dosyası şu konumda oluşturuldu: ${backupPath}\n\nBu dosyayı manuel olarak cihazınızdan kopyalayabilirsiniz.`
-          );
-        }
-      }
-    } catch (error) {
-      console.error('Yedekleme hatası:', error);
-      Alert.alert('Hata', `Veriler yedeklenirken bir hata oluştu: ${error?.message || 'Bilinmeyen hata'}`);
-    } finally {
-      setIsBackupInProgress(false);
-    }
-  };
-  
-  // Yedekten verileri geri yükle
-  const restoreFromBackup = async () => {
-    try {
-      setIsRestoreInProgress(true);
-      
-      // Döküman seçiciyi kullanarak yedek dosyasını seç
-      const result = await DocumentPicker.getDocumentAsync({
-        copyToCacheDirectory: true,
-        type: ['*/*']  // tüm dosya tiplerini kabul et (özel uzantı .mebags)
-      });
-      
-      if (result.canceled) {
-        setIsRestoreInProgress(false);
-        return;
-      }
-      
-      const selectedFile = result.assets?.[0];
-      if (!selectedFile || !selectedFile.uri) {
-        Alert.alert('Hata', 'Seçilen dosya okunamadı.');
-        setIsRestoreInProgress(false);
-        return;
-      }
-      
-      // Yolu al
-      const backupPath = selectedFile.uri;
-      const fileName = selectedFile.name || '';
-      
-      // .mebags uzantısı kontrolü
-      if (!fileName.endsWith('.mebags') && !backupPath.endsWith('.mebags')) {
-        Alert.alert(
-          'Geçersiz Dosya', 
-          'Seçilen dosya bir MEB AGS yedek dosyası değil (.mebags uzantılı olmalı).',
-          [
-            { text: 'Yine de Dene', onPress: () => processBackupFile(backupPath) },
-            { text: 'İptal', style: 'cancel', onPress: () => setIsRestoreInProgress(false) }
-          ]
-        );
-      } else {
-        // Geçerli yedek dosyası
-        await processBackupFile(backupPath);
-      }
-    } catch (error) {
-      console.error('Geri yükleme hatası:', error);
-      Alert.alert('Hata', 'Veriler geri yüklenirken bir hata oluştu.');
-      setIsRestoreInProgress(false);
-    }
-  };
-
-  // Yedek dosyasını işle
-  const processBackupFile = async (backupPath: string) => {
-    try {
-      // İndirme klasörünü temizle
-      const tempDir = FileSystem.cacheDirectory + 'mebags_restore/';
-      const tempDirInfo = await FileSystem.getInfoAsync(tempDir);
-      if (tempDirInfo.exists) {
-        await FileSystem.deleteAsync(tempDir);
-      }
-      await FileSystem.makeDirectoryAsync(tempDir, { intermediates: true });
-      
-      // Dosyayı bir klasör olarak işlemeye çalış
-      let isDirectory = false;
-      let metaFilePath = '';
-      let imagesMapPath = '';
-      
-      try {
-        // Önce bir dosya olarak okumaya çalış
-        const fileContent = await FileSystem.readAsStringAsync(backupPath);
-        // Eğer buraya kadar gelebildiyse, bu bir metin dosyası
-        // Geçici dizine meta.json olarak kaydet
-        metaFilePath = tempDir + 'meta.json';
-        await FileSystem.writeAsStringAsync(metaFilePath, fileContent);
-      } catch (fileError) {
-        console.log('Dosya olarak okunamadı, klasör olarak denenecek', fileError);
-        
-        // Klasör olarak işlemeye çalış
-        try {
-          // Dosyayı geçici dizine kopyala ve içeriğini oku
-          if (backupPath.startsWith('file://')) {
-            // Klasör kopyalama işlemi
-            isDirectory = true;
-            
-            // Tüm içeriği kopyala
-            const backupContentDir = backupPath.endsWith('/') ? backupPath : backupPath + '/';
-            const metaFileExists = await FileSystem.getInfoAsync(backupContentDir + 'meta.json');
-            
-            if (metaFileExists.exists) {
-              // Meta dosyasını oku
-              metaFilePath = backupContentDir + 'meta.json';
-              imagesMapPath = backupContentDir + 'images.json';
-            } else {
-              throw new Error('Yedek klasöründe meta.json dosyası bulunamadı');
-            }
-          } else {
-            throw new Error('Geçersiz dosya yolu formatı');
-          }
-        } catch (dirError) {
-          console.error('Klasör olarak işlenemedi:', dirError);
-          Alert.alert('Hata', 'Yedek dosyası/klasörü okunamadı veya geçersiz format.');
-          setIsRestoreInProgress(false);
-          return;
-        }
-      }
-      
-      // meta.json dosyasını oku
-      if (!metaFilePath) {
-        Alert.alert('Hata', 'meta.json dosyası bulunamadı.');
-        setIsRestoreInProgress(false);
-        return;
-      }
-      
-      const metaContent = await FileSystem.readAsStringAsync(metaFilePath);
-      const backupData = JSON.parse(metaContent);
-      
-      // Görüntü haritasını oku (varsa)
-      let imagesMap = [];
-      if (imagesMapPath) {
-        try {
-          const imagesMapContent = await FileSystem.readAsStringAsync(imagesMapPath);
-          imagesMap = JSON.parse(imagesMapContent);
-        } catch (imgMapError) {
-          console.log('Görüntü haritası okunamadı:', imgMapError);
-        }
-      }
-      
-      // Sürüm kontrolü
-      const backupVersion = backupData.appVersion || '1.0.0';
-      const currentVersion = Constants.expoConfig?.version || '1.0.0';
-      
-      if (backupVersion !== currentVersion) {
-        Alert.alert(
-          'Sürüm Farklılığı',
-          `Yedek dosyası ${backupVersion} sürümünden, mevcut uygulama sürümü ise ${currentVersion}. Bazı veriler uyumlu olmayabilir. Devam etmek istiyor musunuz?`,
-          [
-            { text: 'İptal', style: 'cancel', onPress: () => setIsRestoreInProgress(false) },
-            { 
-              text: 'Devam Et', 
-              onPress: async () => {
-                // Verileri geri yükle
-                await applyBackup(backupData, imagesMap, backupPath, isDirectory);
-                setIsRestoreInProgress(false);
-              }
-            }
-          ]
-        );
-      } else {
-        // Verileri geri yükle
-        await applyBackup(backupData, imagesMap, backupPath, isDirectory);
-        setIsRestoreInProgress(false);
-      }
-    } catch (error) {
-      console.error('Yedek işleme hatası:', error);
-      Alert.alert('Hata', 'Yedek dosyası işlenirken bir hata oluştu.');
-      setIsRestoreInProgress(false);
-    }
-  };
-
-  // Yedeği uygula - JSON verilerini ve fotoğrafları işle
-  const applyBackup = async (
-    backupData: {
-      timestamp: string;
-      appVersion: string;
-      platform: string;
-      data: Array<{ key: string; value: any }>;
-    }, 
-    imagesMap: Array<{
-      type: string;
-      originalPath: string;
-      backupPath: string;
-      examId?: string;
-      mistakeId?: string;
-    }>,
-    backupPath: string,
-    isDirectory: boolean
-  ) => {
-    try {
-      // Mevcut verileri temizle
-      const allKeys = await AsyncStorage.getAllKeys();
-      const keysToExclude = ['@battery_warning_shown']; // Silinmemesi gereken anahtarlar
-      const keysToRemove = allKeys.filter(key => !keysToExclude.includes(key));
-      
-      await AsyncStorage.multiRemove(keysToRemove);
-      
-      // Yedekten gelen verileri geri yükle
-      for (const item of backupData.data) {
-        if (item.key && item.value !== null) {
-          await AsyncStorage.setItem(item.key, JSON.stringify(item.value));
-        }
-      }
-      
-      // Fotoğrafları geri yükle
-      if (imagesMap && imagesMap.length > 0) {
-        const photoRestoreDir = FileSystem.documentDirectory + 'photos/';
-        
-        // Dizini oluştur
-        const photoDirInfo = await FileSystem.getInfoAsync(photoRestoreDir);
-        if (!photoDirInfo.exists) {
-          await FileSystem.makeDirectoryAsync(photoRestoreDir, { intermediates: true });
-        }
-        
-        // Yanıp kalmış eski fotoğrafları temizle
-        try {
-          await FileSystem.deleteAsync(photoRestoreDir, { idempotent: true });
-          await FileSystem.makeDirectoryAsync(photoRestoreDir, { intermediates: true });
-        } catch (cleanError) {
-          console.error('Eski fotoğraflar temizlenirken hata:', cleanError);
-        }
-        
-        // Yedek klasör yolunu düzelt
-        const backupContentDir = isDirectory 
-          ? (backupPath.endsWith('/') ? backupPath : backupPath + '/') 
-          : (backupPath.replace('.mebags', '.mebags/'));
-        
-        // Profil fotoğrafını geri yükle
-        const profileImage = imagesMap.find(img => img.type === 'profile');
-        if (profileImage && profileImage.backupPath) {
-          try {
-            const profileDir = photoRestoreDir + 'profile/';
-            await FileSystem.makeDirectoryAsync(profileDir, { intermediates: true });
-            
-            const profileExt = profileImage.backupPath.split('.').pop() || 'jpg';
-            const newProfilePath = profileDir + `profile.${profileExt}`;
-            
-            // Profil fotoğrafını kopyala
-            await FileSystem.copyAsync({
-              from: backupContentDir + profileImage.backupPath,
-              to: newProfilePath
-            });
-            
-            // AsyncStorage'daki yolu güncelle
-            await AsyncStorage.setItem(PROFILE_IMAGE_KEY, newProfilePath);
-            
-            // State'i güncelle
-            setProfileImage(newProfilePath);
-          } catch (profileError) {
-            console.error('Profil fotoğrafı geri yüklenirken hata:', profileError);
-          }
-        }
-        
-        // Deneme fotoğraflarını geri yükle
-        const mistakeImages = imagesMap.filter(img => img.type === 'mistake');
-        if (mistakeImages.length > 0) {
-          try {
-            // Deneme sonuçlarını al
-            const examsStorageKey = '@meb_ags_exam_results';
-            const examsDataStr = await AsyncStorage.getItem(examsStorageKey);
-            
-            if (examsDataStr) {
-              let examsData = JSON.parse(examsDataStr);
-              
-              // Her deneme için
-              for (const img of mistakeImages) {
-                if (img.examId && img.mistakeId) {
-                  // Denemeyi bul
-                  const examIndex = examsData.findIndex(exam => exam.id === img.examId);
-                  
-                  if (examIndex !== -1) {
-                    // Hatayı bul
-                    const mistakeIndex = examsData[examIndex].mistakes.findIndex(
-                      mistake => mistake.id === img.mistakeId
-                    );
-                    
-                    if (mistakeIndex !== -1) {
-                      // Hata dizinini oluştur
-                      const mistakeDir = photoRestoreDir + `exam_${img.examId}/`;
-                      await FileSystem.makeDirectoryAsync(mistakeDir, { intermediates: true });
-                      
-                      const imgExt = img.backupPath.split('.').pop() || 'jpg';
-                      const newMistakePath = mistakeDir + `mistake_${img.mistakeId}.${imgExt}`;
-                      
-                      // Hata fotoğrafını kopyala
-                      await FileSystem.copyAsync({
-                        from: backupContentDir + img.backupPath,
-                        to: newMistakePath
-                      });
-                      
-                      // URI'yi güncelle
-                      examsData[examIndex].mistakes[mistakeIndex].uri = newMistakePath;
-                    }
-                  }
-                }
-              }
-              
-              // Güncellenmiş verileri kaydet
-              await AsyncStorage.setItem(examsStorageKey, JSON.stringify(examsData));
-            }
-          } catch (mistakesError) {
-            console.error('Deneme fotoğrafları geri yüklenirken hata:', mistakesError);
-          }
-        }
-      }
-      
-      // Uygulama içi verileri yenile
-      await loadStudyTime();
-      
-      // EventRegister ile diğer bileşenlere bildir
-      EventRegister.emit('forceReloadStudyTime', true);
-      
-      Alert.alert(
-        'Geri Yükleme Başarılı',
-        'Verileriniz başarıyla geri yüklendi. Uygulamayı yeniden başlatmanız önerilir.'
-      );
-    } catch (error) {
-      console.error('Yedek uygulama hatası:', error);
-      Alert.alert('Hata', 'Yedek uygulanırken bir hata oluştu.');
-    }
-  };
-
-  // Modal'da dosya yolu veya JSON içeriğini manuel olarak girme
-  const handleManualImport = async () => {
-    try {
-      let backupData;
-      let imagesMap;
-      
-      if (backupJsonText) {
-        // JSON metni girilmiş, doğrudan parse et
-        backupData = JSON.parse(backupJsonText);
-      } else if (backupFilePath) {
-        try {
-          // Dosya yolu girilmiş, klasör mü yoksa dosya mı kontrol et
-          const fileInfo = await FileSystem.getInfoAsync(backupFilePath);
-          
-          if (!fileInfo.exists) {
-            Alert.alert('Hata', 'Belirtilen dosya veya klasör bulunamadı.');
-            return;
-          }
-          
-          // .mebags uzantılı klasör mü kontrol et
-          if (backupFilePath.endsWith('.mebags') || fileInfo.isDirectory) {
-            // Klasör olarak işle
-            const metaFilePath = backupFilePath.endsWith('/') 
-              ? `${backupFilePath}meta.json`
-              : `${backupFilePath}/meta.json`;
-            
-            const imageMapPath = backupFilePath.endsWith('/') 
-              ? `${backupFilePath}images.json`
-              : `${backupFilePath}/images.json`;
-            
-            // Meta dosyasını oku
-            const metaFileInfo = await FileSystem.getInfoAsync(metaFilePath);
-            if (!metaFileInfo.exists) {
-              Alert.alert('Hata', 'Geçersiz yedek klasörü. meta.json dosyası bulunamadı.');
-              return;
-            }
-            
-            const metaContent = await FileSystem.readAsStringAsync(metaFilePath);
-            backupData = JSON.parse(metaContent);
-            
-            // Resim haritasını kontrol et
-            const imageMapInfo = await FileSystem.getInfoAsync(imageMapPath);
-            if (imageMapInfo.exists) {
-              const imageMapContent = await FileSystem.readAsStringAsync(imageMapPath);
-              imagesMap = JSON.parse(imageMapContent);
-            }
-          } else {
-            // Dosya olarak işle
-            const backupString = await FileSystem.readAsStringAsync(backupFilePath);
-            backupData = JSON.parse(backupString);
-          }
-        } catch (fileError) {
-          console.error('Dosya okuma hatası:', fileError);
-          Alert.alert('Hata', 'Dosya okunurken bir hata oluştu. Geçerli bir yedek dosyası mı kontrol edin.');
-          return;
-        }
-      } else {
-        Alert.alert('Bilgi Gerekli', 'Lütfen yedek içeriğini veya dosya yolunu girin.');
-        return;
-      }
-      
-      // Uygulamanın sürüm uyumluluğunu kontrol et
-      const backupVersion = backupData.appVersion || '1.0.0';
-      const currentVersion = Constants.expoConfig?.version || '1.0.0';
-      
-      // Modal'ı kapat
-      setIsImportModalVisible(false);
-      setBackupJsonText('');
-      setBackupFilePath('');
-      
-      if (backupVersion !== currentVersion) {
-        // Sürüm farklılığı varsa uyarı göster ama devam et
-        Alert.alert(
-          'Sürüm Farklılığı',
-          `Yedek dosyası ${backupVersion} sürümünden, mevcut uygulama sürümü ise ${currentVersion}. Bazı veriler uyumlu olmayabilir. Devam etmek istiyor musunuz?`,
-          [
-            { text: 'İptal', style: 'cancel', onPress: () => setIsRestoreInProgress(false) },
-            { 
-              text: 'Devam Et', 
-              onPress: async () => {
-                await applyBackup(backupData, imagesMap, '', false);
-                setIsRestoreInProgress(false);
-              }
-            }
-          ]
-        );
-      } else {
-        // Sürümler aynıysa doğrudan uygula
-        await applyBackup(backupData, imagesMap, '', false);
-        setIsRestoreInProgress(false);
-      }
-    } catch (error) {
-      console.error('Manuel içe aktarma hatası:', error);
-      Alert.alert('Hata', 'Yedek verisi işlenirken bir hata oluştu. Geçerli bir JSON formatında olduğundan emin olun.');
-      setIsRestoreInProgress(false);
-    }
-  };
-
-  // Panoya kopyala
-  const copyToClipboard = async (text: string | null) => {
-    if (text) {
-      await Clipboard.setString(text);
-      Alert.alert('Başarılı', 'Metin panoya kopyalandı.');
-    } else {
-      Alert.alert('Hata', 'Kopyalanacak metin bulunamadı.');
-    }
-  };
+  // useEffect içinde son yedekleme tarihini yükle
+  useEffect(() => {
+    const loadLastBackupDate = async () => {
+      const date = await getLastBackupDate();
+      setLastBackupDate(date);
+    };
+    
+    loadLastBackupDate();
+  }, []);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -1093,6 +460,103 @@ export default function ProfileScreen() {
             </View>
             <Text style={styles.menuItemArrow}>›</Text>
           </TouchableOpacity>
+          
+          <View style={styles.settingsSection}>
+            <Text style={styles.sectionTitle}>Veri Yönetimi</Text>
+            
+            <TouchableOpacity 
+              style={styles.settingButton}
+              onPress={async () => {
+                try {
+                  await createBackup();
+                  // Son yedekleme tarihini güncelle
+                  const date = await getLastBackupDate();
+                  setLastBackupDate(date);
+                  
+                  Alert.alert(
+                    'Yedekleme Başarılı',
+                    'Verileriniz başarıyla yedeklendi. Yedek dosyasını güvenli bir yerde saklayın.'
+                  );
+                } catch (error) {
+                  Alert.alert(
+                    'Yedekleme Hatası',
+                    'Veriler yedeklenirken bir hata oluştu. Lütfen tekrar deneyin.'
+                  );
+                }
+              }}
+            >
+              <View style={styles.settingContent}>
+                <Save color="#3b82f6" size={24} />
+                <View style={styles.settingTextContainer}>
+                  <Text style={styles.settingTitle}>Verileri Yedekle</Text>
+                  <Text style={styles.settingDescription}>
+                    Tüm verilerinizi ve fotoğraflarınızı yedekleyin
+                    {lastBackupDate && (
+                      `\nSon yedekleme: ${lastBackupDate.toLocaleDateString('tr-TR', {
+                        day: '2-digit',
+                        month: 'long',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}`
+                    )}
+                  </Text>
+                </View>
+              </View>
+              <ChevronRight color="#64748b" size={20} />
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.settingButton}
+              onPress={async () => {
+                Alert.alert(
+                  'Dikkat',
+                  'Yedekten geri yükleme işlemi mevcut verilerinizin üzerine yazacaktır. Devam etmek istiyor musunuz?',
+                  [
+                    {
+                      text: 'İptal',
+                      style: 'cancel'
+                    },
+                    {
+                      text: 'Devam Et',
+                      style: 'destructive',
+                      onPress: async () => {
+                        try {
+                          const result = await restoreBackup();
+                          if (result) {
+                            // Son yedekleme tarihini güncelle
+                            const date = await getLastBackupDate();
+                            setLastBackupDate(date);
+                            
+                            Alert.alert(
+                              'Geri Yükleme Başarılı',
+                              'Verileriniz başarıyla geri yüklendi. Değişiklikleri görmek için uygulamayı yeniden başlatın.'
+                            );
+                          }
+                        } catch (error) {
+                          Alert.alert(
+                            'Geri Yükleme Hatası',
+                            'Veriler geri yüklenirken bir hata oluştu. Lütfen tekrar deneyin.'
+                          );
+                        }
+                      }
+                    }
+                  ]
+                );
+              }}
+            >
+              <View style={styles.settingContent}>
+                <RotateCcw color="#3b82f6" size={24} />
+                <View style={styles.settingTextContainer}>
+                  <Text style={styles.settingTitle}>Yedekten Geri Yükle</Text>
+                  <Text style={styles.settingDescription}>
+                    Yedek dosyasından verilerinizi geri yükleyin
+                  </Text>
+                </View>
+              </View>
+              <ChevronRight color="#64748b" size={20} />
+            </TouchableOpacity>
+          </View>
         </View>
         
         {/* Support Section */}
@@ -1110,42 +574,6 @@ export default function ProfileScreen() {
               <Text style={styles.menuItemText}>Yardım Merkezi</Text>
             </View>
             <Text style={styles.menuItemArrow}>›</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={styles.menuItem}
-            onPress={backupAllData}
-            disabled={isBackupInProgress}
-          >
-            <View style={styles.menuItemLeft}>
-              <View style={[styles.menuItemIcon, { backgroundColor: '#3b82f6' }]}>
-                <Download color="#fff" size={20} />
-              </View>
-              <Text style={styles.menuItemText}>Verileri Yedekle</Text>
-            </View>
-            {isBackupInProgress ? (
-              <ActivityIndicator size="small" color="#3b82f6" />
-            ) : (
-              <Text style={styles.menuItemArrow}>›</Text>
-            )}
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={styles.menuItem}
-            onPress={restoreFromBackup}
-            disabled={isRestoreInProgress}
-          >
-            <View style={styles.menuItemLeft}>
-              <View style={[styles.menuItemIcon, { backgroundColor: '#8b5cf6' }]}>
-                <Upload color="#fff" size={20} />
-              </View>
-              <Text style={styles.menuItemText}>Yedekten Geri Yükle</Text>
-            </View>
-            {isRestoreInProgress ? (
-              <ActivityIndicator size="small" color="#8b5cf6" />
-            ) : (
-              <Text style={styles.menuItemArrow}>›</Text>
-            )}
           </TouchableOpacity>
           
           <TouchableOpacity 
@@ -1173,71 +601,25 @@ export default function ProfileScreen() {
             </View>
             <Text style={styles.menuItemArrow}>›</Text>
           </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={styles.menuItem}
+            onPress={() => Alert.alert("Uygulama Değerlendirme", "Bu özellik yakında kullanıma sunulacaktır.")}
+          >
+            <View style={styles.menuItemLeft}>
+              <View style={[styles.menuItemIcon, { backgroundColor: '#ef4444' }]}>
+                <Star color="#fff" size={20} />
+              </View>
+              <Text style={styles.menuItemText}>Uygulamayı Değerlendir</Text>
+            </View>
+            <Text style={styles.menuItemArrow}>›</Text>
+          </TouchableOpacity>
         </View>
         
         <View style={styles.versionInfo}>
           <Text style={styles.versionText}>Versiyon 1.0.0</Text>
         </View>
       </ScrollView>
-      
-      {/* Yedek İçe Aktarma Modal */}
-      <Modal
-        visible={isImportModalVisible}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={() => {
-          setIsImportModalVisible(false);
-          setIsRestoreInProgress(false);
-        }}
-      >
-        <View style={styles.modalContainer}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Yedekten Geri Yükle</Text>
-            
-            <Text style={styles.modalLabel}>Yedek Dosya Yolu:</Text>
-            <TextInput
-              style={styles.modalInput}
-              placeholder="Örn: /data/user/0/com.example.app/files/yedek.json"
-              placeholderTextColor="#94a3b8"
-              value={backupFilePath}
-              onChangeText={setBackupFilePath}
-              multiline={false}
-            />
-            
-            <Text style={styles.modalLabel}>VEYA</Text>
-            
-            <Text style={styles.modalLabel}>Yedek JSON İçeriği:</Text>
-            <TextInput
-              style={[styles.modalInput, { height: 100 }]}
-              placeholder="JSON içeriğini yapıştırın..."
-              placeholderTextColor="#94a3b8"
-              value={backupJsonText}
-              onChangeText={setBackupJsonText}
-              multiline={true}
-              numberOfLines={5}
-            />
-            
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.modalCancelButton]}
-                onPress={() => {
-                  setIsImportModalVisible(false);
-                  setIsRestoreInProgress(false);
-                }}
-              >
-                <Text style={styles.modalButtonText}>İptal</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={[styles.modalButton, styles.modalSubmitButton]}
-                onPress={handleManualImport}
-              >
-                <Text style={styles.modalButtonText}>Geri Yükle</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -1526,76 +908,32 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
-  // Modal stilleri
-  modalContainer: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  modalContent: {
-    backgroundColor: '#1e293b',
-    borderRadius: 16,
-    padding: 20,
-    width: '100%',
-    maxWidth: 500,
-    ...Platform.select({
-      android: {
-        elevation: 5,
-      },
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.25,
-        shadowRadius: 3.84,
-      },
-    }),
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#fff',
+  settingsSection: {
     marginBottom: 20,
-    textAlign: 'center',
   },
-  modalLabel: {
-    fontSize: 16,
-    color: '#cbd5e1',
-    marginBottom: 8,
-    marginTop: 12,
-  },
-  modalInput: {
-    backgroundColor: '#273549',
-    padding: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#475569',
-    color: '#fff',
-    fontSize: 14,
-  },
-  modalButtons: {
+  settingButton: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 20,
-  },
-  modalButton: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 8,
     alignItems: 'center',
-    justifyContent: 'center',
-    marginHorizontal: 5,
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#334155',
   },
-  modalCancelButton: {
-    backgroundColor: '#475569',
+  settingContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
   },
-  modalSubmitButton: {
-    backgroundColor: '#3b82f6',
+  settingTextContainer: {
+    flex: 1,
   },
-  modalButtonText: {
-    color: '#fff',
-    fontWeight: '600',
+  settingTitle: {
     fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  settingDescription: {
+    fontSize: 12,
+    color: '#94a3b8',
   },
 });
