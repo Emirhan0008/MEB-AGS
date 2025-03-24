@@ -15,6 +15,7 @@ import { SharedElement } from 'react-navigation-shared-element';
 import { EventRegister } from 'react-native-event-listeners';
 import { createBackup, restoreBackup, getLastBackupDate } from '../../utils/backup';
 import { ChevronRight } from 'lucide-react-native';
+import { Ionicons } from '@expo/vector-icons';
 
 // AsyncStorage anahtarı
 const PROFILE_IMAGE_KEY = 'meb-ags-profile-image';
@@ -464,101 +465,69 @@ export default function ProfileScreen() {
           <View style={styles.settingsSection}>
             <Text style={styles.sectionTitle}>Veri Yönetimi</Text>
             
-            <TouchableOpacity 
-              style={styles.settingButton}
+            <TouchableOpacity
+              style={[styles.settingItem, { backgroundColor: theme.colors.green }]}
               onPress={async () => {
                 try {
                   const result = await createBackup();
                   if (result.success) {
-                    // Son yedekleme tarihini güncelle
-                    const date = await getLastBackupDate();
-                    setLastBackupDate(date);
-                    
                     Alert.alert(
-                      'Yedekleme Başarılı',
-                      Platform.OS === 'android' 
-                        ? 'Verileriniz başarıyla yedeklendi. Yedek dosyası indirilenler klasörüne kaydedildi.'
-                        : 'Verileriniz başarıyla yedeklendi. Yedek dosyası uygulama klasörüne kaydedildi.'
+                      'Başarılı', 
+                      'Verileriniz başarıyla yedeklendi!',
+                      [{ text: 'Tamam' }]
                     );
+                    // Son yedekleme tarihini güncelle
+                    setLastBackupDate(new Date());
+                  } else {
+                    Alert.alert('Hata', result.message || 'Yedekleme sırasında bir hata oluştu.');
                   }
                 } catch (error) {
-                  Alert.alert(
-                    'Yedekleme Hatası',
-                    error instanceof Error ? error.message : 'Veriler yedeklenirken bir hata oluştu. Lütfen tekrar deneyin.'
-                  );
+                  console.error('Yedekleme hatası:', error);
+                  Alert.alert('Hata', 'Yedekleme sırasında bir hata oluştu.');
                 }
               }}
             >
-              <View style={styles.settingContent}>
-                <Save color="#3b82f6" size={24} />
-                <View style={styles.settingTextContainer}>
-                  <Text style={styles.settingTitle}>Verileri Yedekle</Text>
-                  <Text style={styles.settingDescription}>
-                    Tüm verilerinizi ve fotoğraflarınızı yedekleyin
-                    {lastBackupDate && (
-                      `\nSon yedekleme: ${lastBackupDate.toLocaleDateString('tr-TR', {
-                        day: '2-digit',
-                        month: 'long',
-                        year: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit'
-                      })}`
-                    )}
-                  </Text>
-                </View>
-              </View>
-              <ChevronRight color="#64748b" size={20} />
+              <Ionicons name="cloud-upload-outline" size={24} color="#fff" />
+              <Text style={[styles.settingText, { color: '#fff' }]}>Veri Yedekle</Text>
             </TouchableOpacity>
-            
+
             <TouchableOpacity 
-              style={styles.settingButton}
+              style={[styles.settingItem, { backgroundColor: theme.colors.blue }]}
               onPress={async () => {
                 Alert.alert(
-                  'Dikkat',
+                  'Uyarı', 
                   'Yedekten geri yükleme işlemi mevcut verilerinizin üzerine yazacaktır. Devam etmek istiyor musunuz?',
                   [
-                    {
-                      text: 'İptal',
-                      style: 'cancel'
+                    { 
+                      text: 'İptal', 
+                      style: 'cancel' 
                     },
-                    {
-                      text: 'Devam Et',
-                      style: 'destructive',
+                    { 
+                      text: 'Devam Et', 
                       onPress: async () => {
                         try {
                           const result = await restoreBackup();
-                          if (result) {
-                            // Son yedekleme tarihini güncelle
-                            const date = await getLastBackupDate();
-                            setLastBackupDate(date);
-                            
+                          if (result.success) {
                             Alert.alert(
-                              'Geri Yükleme Başarılı',
-                              'Verileriniz başarıyla geri yüklendi. Değişiklikleri görmek için uygulamayı yeniden başlatın.'
+                              'Başarılı', 
+                              'Verileriniz başarıyla geri yüklendi! Değişikliklerin uygulanması için uygulamayı yeniden başlatın.',
+                              [{ text: 'Tamam' }]
                             );
+                          } else {
+                            Alert.alert('Hata', result.message || 'Geri yükleme sırasında bir hata oluştu.');
                           }
                         } catch (error) {
-                          Alert.alert(
-                            'Geri Yükleme Hatası',
-                            'Veriler geri yüklenirken bir hata oluştu. Lütfen tekrar deneyin.'
-                          );
+                          console.error('Geri yükleme hatası:', error);
+                          Alert.alert('Hata', 'Geri yükleme sırasında bir hata oluştu.');
                         }
-                      }
+                      } 
                     }
                   ]
                 );
               }}
             >
-              <View style={styles.settingContent}>
-                <RotateCcw color="#3b82f6" size={24} />
-                <View style={styles.settingTextContainer}>
-                  <Text style={styles.settingTitle}>Yedekten Geri Yükle</Text>
-                  <Text style={styles.settingDescription}>
-                    Yedek dosyasından verilerinizi geri yükleyin
-                  </Text>
-                </View>
-              </View>
-              <ChevronRight color="#64748b" size={20} />
+              <Ionicons name="cloud-download-outline" size={24} color="#fff" />
+              <Text style={[styles.settingText, { color: '#fff' }]}>Yedekten Geri Yükle</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -915,7 +884,7 @@ const styles = StyleSheet.create({
   settingsSection: {
     marginBottom: 20,
   },
-  settingButton: {
+  settingItem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -923,21 +892,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#334155',
   },
-  settingContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  settingTextContainer: {
-    flex: 1,
-  },
-  settingTitle: {
+  settingText: {
     fontSize: 16,
-    fontWeight: '600',
     color: '#fff',
-  },
-  settingDescription: {
-    fontSize: 12,
-    color: '#94a3b8',
   },
 });

@@ -1,7 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system';
-import DocumentPicker from 'react-native-document-picker';
-import { Platform } from 'react-native';
+import { Platform, Alert } from 'react-native';
 
 // Yedeklenecek verilerin anahtarları
 const BACKUP_KEYS = {
@@ -18,10 +17,11 @@ const BACKUP_KEYS = {
   USER_PREFERENCES: 'meb-ags-user-preferences',
   NOTIFICATION_SETTINGS: 'meb-ags-notification-settings',
   STUDY_GOALS: 'meb-ags-study-goals',
-  LAST_BACKUP_DATE: 'meb-ags-last-backup-date'
+  LAST_BACKUP_DATE: 'meb-ags-last-backup-date',
+  BACKUP_DATA: 'meb-ags-backup-data'
 };
 
-// Yedekleme fonksiyonu
+// Yedekleme fonksiyonu - AsyncStorage'a kaydeder
 export const createBackup = async () => {
   try {
     const backupData: { [key: string]: any } = {
@@ -34,6 +34,9 @@ export const createBackup = async () => {
     // Tüm verileri AsyncStorage'dan al
     for (const [key, value] of Object.entries(BACKUP_KEYS)) {
       try {
+        // Yedekleme verisini atlayarak sonsuz döngü olmasını engelle
+        if (key === 'BACKUP_DATA') continue;
+        
         const data = await AsyncStorage.getItem(value);
         if (data) {
           backupData.data[key] = data;
@@ -70,107 +73,84 @@ export const createBackup = async () => {
       console.warn('Yanlış soru fotoğrafları yedeklenirken hata:', error);
     }
     
-    // Yedek dosyasını oluştur
+    // Yedek verisini AsyncStorage'a kaydet
     const backupString = JSON.stringify(backupData);
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const fileName = `meb-ags-yedek-${timestamp}.json`;
-    
-    // Dosyayı kaydet
-    const filePath = `${FileSystem.documentDirectory}${fileName}`;
-    await FileSystem.writeAsStringAsync(filePath, backupString);
+    await AsyncStorage.setItem(BACKUP_KEYS.BACKUP_DATA, backupString);
     
     // Son yedekleme tarihini kaydet
     await AsyncStorage.setItem(BACKUP_KEYS.LAST_BACKUP_DATE, new Date().toISOString());
-
-    // Dosyayı indirilenler klasörüne kopyala
-    if (Platform.OS === 'android') {
-      const downloadPath = `${FileSystem.documentDirectory}Download/${fileName}`;
-      await FileSystem.copyAsync({
-        from: filePath,
-        to: downloadPath
-      });
-      return { success: true, filePath: downloadPath };
-    }
     
-    return { success: true, filePath };
+    return { success: true, message: "Veriler başarıyla yedeklendi" };
   } catch (error) {
     console.error('Yedekleme hatası:', error);
-    throw new Error('Veriler yedeklenirken bir hata oluştu.');
+    return { success: false, message: "Veriler yedeklenirken bir hata oluştu" };
   }
 };
 
-// Geri yükleme fonksiyonu
+// Geri yükleme fonksiyonu - AsyncStorage'dan okur
 export const restoreBackup = async () => {
   try {
-    // Dosya seçiciyi aç
-    const result = await DocumentPicker.pick({
-      type: [DocumentPicker.types.json],
-    });
+    // Yedek verisini oku
+    const backupString = await AsyncStorage.getItem(BACKUP_KEYS.BACKUP_DATA);
+    if (!backupString) {
+      return { success: false, message: "Yedek bulunamadı" };
+    }
     
-    if (result[0]) {
-      // Dosyayı oku
-      const backupString = await FileSystem.readAsStringAsync(result[0].uri);
-      const backupData = JSON.parse(backupString);
-      
-      // Yedek dosyası versiyonunu kontrol et
-      if (!backupData.version) {
-        throw new Error('Geçersiz yedek dosyası formatı.');
+    const backupData = JSON.parse(backupString);
+    
+    // Yedek dosyası versiyonunu kontrol et
+    if (!backupData.version) {
+      return { success: false, message: "Geçersiz yedek dosyası formatı" };
+    }
+    
+    // Verileri AsyncStorage'a geri yükle
+    for (const [key, value] of Object.entries(backupData.data)) {
+      if (key === 'wrongQuestionImages') continue; // Fotoğrafları ayrı işle
+      try {
+        await AsyncStorage.setItem(BACKUP_KEYS[key as keyof typeof BACKUP_KEYS], value);
+      } catch (error) {
+        console.warn(`${key} verisi geri yüklenirken hata:`, error);
       }
-      
-      // Verileri AsyncStorage'a geri yükle
-      for (const [key, value] of Object.entries(backupData.data)) {
-        if (key === 'wrongQuestionImages') continue; // Fotoğrafları ayrı işle
-        try {
-          await AsyncStorage.setItem(BACKUP_KEYS[key as keyof typeof BACKUP_KEYS], value);
-        } catch (error) {
-          console.warn(`${key} verisi geri yüklenirken hata:`, error);
-        }
-      }
-      
-      // Yanlış soru fotoğraflarını geri yükle
-      if (backupData.data.wrongQuestionImages) {
-        try {
-          const wrongQuestionsData = await AsyncStorage.getItem(BACKUP_KEYS.WRONG_QUESTIONS);
-          if (wrongQuestionsData) {
-            const wrongQuestions = JSON.parse(wrongQuestionsData);
-            
-            // Her bir fotoğrafı dosya sistemine kaydet
-            for (const question of wrongQuestions) {
-              if (backupData.data.wrongQuestionImages[question.id]) {
-                try {
-                  const base64 = backupData.data.wrongQuestionImages[question.id];
-                  const fileName = `wrong-question-${question.id}.jpg`;
-                  const filePath = `${FileSystem.documentDirectory}${fileName}`;
-                  
-                  await FileSystem.writeAsStringAsync(filePath, base64, {
-                    encoding: FileSystem.EncodingType.Base64,
-                  });
-                  
-                  question.imageUri = filePath;
-                } catch (error) {
-                  console.warn(`Fotoğraf kaydedilemedi (${question.id}):`, error);
-                }
+    }
+    
+    // Yanlış soru fotoğraflarını geri yükle
+    if (backupData.data.wrongQuestionImages) {
+      try {
+        const wrongQuestionsData = await AsyncStorage.getItem(BACKUP_KEYS.WRONG_QUESTIONS);
+        if (wrongQuestionsData) {
+          const wrongQuestions = JSON.parse(wrongQuestionsData);
+          
+          // Her bir fotoğrafı dosya sistemine kaydet
+          for (const question of wrongQuestions) {
+            if (backupData.data.wrongQuestionImages[question.id]) {
+              try {
+                const base64 = backupData.data.wrongQuestionImages[question.id];
+                const fileName = `wrong-question-${question.id}.jpg`;
+                const filePath = `${FileSystem.documentDirectory}${fileName}`;
+                
+                await FileSystem.writeAsStringAsync(filePath, base64, {
+                  encoding: FileSystem.EncodingType.Base64,
+                });
+                
+                question.imageUri = filePath;
+              } catch (error) {
+                console.warn(`Fotoğraf kaydedilemedi (${question.id}):`, error);
               }
             }
-            
-            // Güncellenmiş yanlış soruları kaydet
-            await AsyncStorage.setItem(BACKUP_KEYS.WRONG_QUESTIONS, JSON.stringify(wrongQuestions));
           }
-        } catch (error) {
-          console.warn('Yanlış soru fotoğrafları geri yüklenirken hata:', error);
+          
+          // Güncellenmiş yanlış soruları kaydet
+          await AsyncStorage.setItem(BACKUP_KEYS.WRONG_QUESTIONS, JSON.stringify(wrongQuestions));
         }
+      } catch (error) {
+        console.warn('Yanlış soru fotoğrafları geri yüklenirken hata:', error);
       }
-      
-      return true;
     }
     
-    return false;
+    return { success: true, message: "Veriler başarıyla geri yüklendi" };
   } catch (error) {
-    if (DocumentPicker.isCancel(error)) {
-      return false;
-    }
     console.error('Geri yükleme hatası:', error);
-    throw new Error('Veriler geri yüklenirken bir hata oluştu.');
+    return { success: false, message: "Veriler geri yüklenirken bir hata oluştu" };
   }
 };
 
