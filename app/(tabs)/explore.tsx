@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { useRouter } from 'expo-router';
+import { useRouter, useNavigation } from 'expo-router';
 import { ArrowLeft, RotateCcw, AlertTriangle, Clock, BookOpen, Trash2 } from 'lucide-react-native';
 import { Modal } from '../../components/Modal';
 import { useStats } from '../../context/StatsContext';
@@ -13,6 +13,7 @@ const STORAGE_KEY = 'meb-ags-stats';
 
 export default function ExploreScreen() {
   const router = useRouter();
+  const navigation = useNavigation();
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
   const [selectedSubjectForReset, setSelectedSubjectForReset] = useState<number | null>(null);
   const [lastResetData, setLastResetData] = useState<any>(null);
@@ -241,6 +242,11 @@ export default function ExploreScreen() {
     }
   };
 
+  // Geri tuşuna basıldığında ana tab'a dön
+  const handleBackPress = () => {
+    router.push('/');
+  };
+
   if (isLoading) {
     return (
       <SafeAreaView style={styles.container}>
@@ -260,10 +266,10 @@ export default function ExploreScreen() {
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <TouchableOpacity onPress={() => router.back()}>
+          <TouchableOpacity onPress={handleBackPress}>
             <ArrowLeft color="#fff" size={24} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>İstatistikler</Text>
+          <Text style={styles.headerTitle}>Keşfet</Text>
         </View>
         <TouchableOpacity 
           style={styles.resetButton}
