@@ -14,7 +14,6 @@ import * as Application from 'expo-application';
 import { SharedElement } from 'react-navigation-shared-element';
 import { EventRegister } from 'react-native-event-listeners';
 import * as FileSystem from 'expo-file-system';
-import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
 
 // AsyncStorage anahtarı
@@ -328,24 +327,18 @@ export default function ProfileScreen() {
         encoding: FileSystem.EncodingType.UTF8
       });
       
-      // Paylaşım menüsünü aç
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(fileUri, {
-          mimeType: 'application/json',
-          dialogTitle: 'MEB AGS Verilerinizi Yedekleyin',
-          UTI: 'public.json'
-        });
-        
-        Alert.alert(
-          'Yedekleme Başarılı',
-          'Verileriniz başarıyla yedeklendi. Bu dosyayı güvenli bir yerde saklayın.'
-        );
-      } else {
-        Alert.alert(
-          'Paylaşım Kullanılamıyor',
-          'Cihazınızda paylaşım özelliği kullanılamıyor.'
-        );
-      }
+      // Paylaşım yerine dosya yolu hakkında bilgi ver
+      Alert.alert(
+        'Yedekleme Başarılı',
+        `Verileriniz başarıyla yedeklendi. Dosya şu konuma kaydedildi: ${fileUri}`,
+        [
+          {
+            text: 'Tamam',
+            onPress: () => console.log('Yedekleme tamamlandı')
+          }
+        ]
+      );
+      
     } catch (error) {
       console.error('Yedekleme hatası:', error);
       Alert.alert('Hata', 'Veriler yedeklenirken bir hata oluştu.');
