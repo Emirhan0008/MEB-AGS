@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system';
-import * as DocumentPicker from 'expo-document-picker';
+import DocumentPicker from 'react-native-document-picker';
 import { Platform } from 'react-native';
 
 // Yedeklenecek verilerin anahtarları
@@ -103,14 +103,13 @@ export const createBackup = async () => {
 export const restoreBackup = async () => {
   try {
     // Dosya seçiciyi aç
-    const result = await DocumentPicker.getDocumentAsync({
-      type: 'application/json',
-      copyToCacheDirectory: true
+    const result = await DocumentPicker.pick({
+      type: [DocumentPicker.types.json],
     });
     
-    if (result.type === 'success') {
+    if (result[0]) {
       // Dosyayı oku
-      const backupString = await FileSystem.readAsStringAsync(result.uri);
+      const backupString = await FileSystem.readAsStringAsync(result[0].uri);
       const backupData = JSON.parse(backupString);
       
       // Yedek dosyası versiyonunu kontrol et
@@ -167,6 +166,9 @@ export const restoreBackup = async () => {
     
     return false;
   } catch (error) {
+    if (DocumentPicker.isCancel(error)) {
+      return false;
+    }
     console.error('Geri yükleme hatası:', error);
     throw new Error('Veriler geri yüklenirken bir hata oluştu.');
   }
