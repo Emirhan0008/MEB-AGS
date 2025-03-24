@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, Alert, Platform, ActivityIndicator, Modal, TextInput } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, Alert, Platform, ActivityIndicator, Modal, TextInput, Clipboard } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { LogOut, Settings, Bell, CircleHelp as HelpCircle, Shield, Star, Camera, Globe, Palette, MessageSquare, Award, BookOpen, ArrowLeft, Download, Upload, Save } from 'lucide-react-native';
@@ -36,6 +36,11 @@ export default function ProfileScreen() {
   // Yedekleme durumunu takip eden state
   const [isBackupInProgress, setIsBackupInProgress] = useState(false);
   const [isRestoreInProgress, setIsRestoreInProgress] = useState(false);
+  
+  // Yedek içe aktarma modal'ı için state
+  const [isImportModalVisible, setIsImportModalVisible] = useState(false);
+  const [backupJsonText, setBackupJsonText] = useState('');
+  const [backupFilePath, setBackupFilePath] = useState('');
   
   // Profil fotoğrafını AsyncStorage'dan yükle
   useEffect(() => {
@@ -326,14 +331,22 @@ export default function ProfileScreen() {
         encoding: FileSystem.EncodingType.UTF8
       });
       
-      // Paylaşım yerine dosya yolu hakkında bilgi ver
+      // Kullanıcıya yedekleme seçeneklerini göster
       Alert.alert(
         'Yedekleme Başarılı',
-        `Verileriniz başarıyla yedeklendi. Dosya şu konuma kaydedildi: ${fileUri}`,
+        'Yedek oluşturuldu. Ne yapmak istersiniz?',
         [
           {
+            text: 'Dosya Yolunu Kopyala',
+            onPress: () => copyToClipboard(fileUri)
+          },
+          {
+            text: 'JSON Verilerini Kopyala',
+            onPress: () => copyToClipboard(backupString)
+          },
+          {
             text: 'Tamam',
-            onPress: () => console.log('Yedekleme tamamlandı')
+            style: 'default'
           }
         ]
       );
@@ -349,65 +362,14 @@ export default function ProfileScreen() {
   // Yedekten verileri geri yükle
   const restoreFromBackup = async () => {
     try {
-      // Şu anda bu özellik kullanılamıyor, bir uyarı göster
-      Alert.alert(
-        'Geçici Olarak Kullanılamıyor',
-        'Yedekten geri yükleme özelliği şu anda bakım modunda. En kısa sürede erişime açılacaktır.',
-        [
-          { text: 'Tamam', style: 'default' }
-        ]
-      );
-      
-      /* Eski kod kaldırıldı
       setIsRestoreInProgress(true);
       
-      // Kullanıcıdan dosya seçmesini iste
-      const result = await DocumentPicker.getDocumentAsync({
-        type: 'application/json',
-        copyToCacheDirectory: true,
-      });
+      // Manuel yedek içe aktarma için modal aç
+      setIsImportModalVisible(true);
       
-      if (result.canceled) {
-        return;
-      }
-      
-      // Dosyayı oku
-      const fileUri = result.assets[0].uri;
-      const backupString = await FileSystem.readAsStringAsync(fileUri, {
-        encoding: FileSystem.EncodingType.UTF8
-      });
-      
-      // JSON'u parse et
-      const backupData = JSON.parse(backupString);
-      
-      // Uygulamanın sürüm uyumluluğunu kontrol et
-      const backupVersion = backupData.appVersion || '1.0.0';
-      const currentVersion = Constants.expoConfig?.version || '1.0.0';
-      
-      if (backupVersion !== currentVersion) {
-        // Sürüm farklılığı varsa uyarı göster ama devam et
-        Alert.alert(
-          'Sürüm Farklılığı',
-          `Yedek dosyası ${backupVersion} sürümünden, mevcut uygulama sürümü ise ${currentVersion}. Bazı veriler uyumlu olmayabilir. Devam etmek istiyor musunuz?`,
-          [
-            { text: 'İptal', style: 'cancel' },
-            { 
-              text: 'Devam Et', 
-              onPress: async () => {
-                await applyBackup(backupData);
-              }
-            }
-          ]
-        );
-      } else {
-        // Sürümler aynıysa doğrudan uygula
-        await applyBackup(backupData);
-      }
-      */
     } catch (error) {
       console.error('Geri yükleme hatası:', error);
       Alert.alert('Hata', 'Veriler geri yüklenirken bir hata oluştu.');
-    } finally {
       setIsRestoreInProgress(false);
     }
   };
@@ -449,6 +411,76 @@ export default function ProfileScreen() {
       console.error('Yedek uygulama hatası:', error);
       Alert.alert('Hata', 'Yedek uygulanırken bir hata oluştu.');
     }
+  };
+
+  // Modal'da dosya yolu veya JSON içeriğini manuel olarak girme
+  const handleManualImport = async () => {
+    try {
+      let backupData;
+      
+      if (backupJsonText) {
+        // JSON metni girilmiş, doğrudan parse et
+        backupData = JSON.parse(backupJsonText);
+      } else if (backupFilePath) {
+        // Dosya yolu girilmiş, okuyup parse et
+        const fileExists = await FileSystem.getInfoAsync(backupFilePath);
+        
+        if (!fileExists.exists) {
+          Alert.alert('Hata', 'Belirtilen dosya bulunamadı.');
+          return;
+        }
+        
+        const backupString = await FileSystem.readAsStringAsync(backupFilePath, {
+          encoding: FileSystem.EncodingType.UTF8
+        });
+        
+        backupData = JSON.parse(backupString);
+      } else {
+        Alert.alert('Bilgi Gerekli', 'Lütfen yedek içeriğini veya dosya yolunu girin.');
+        return;
+      }
+      
+      // Uygulamanın sürüm uyumluluğunu kontrol et
+      const backupVersion = backupData.appVersion || '1.0.0';
+      const currentVersion = Constants.expoConfig?.version || '1.0.0';
+      
+      // Modal'ı kapat
+      setIsImportModalVisible(false);
+      setBackupJsonText('');
+      setBackupFilePath('');
+      
+      if (backupVersion !== currentVersion) {
+        // Sürüm farklılığı varsa uyarı göster ama devam et
+        Alert.alert(
+          'Sürüm Farklılığı',
+          `Yedek dosyası ${backupVersion} sürümünden, mevcut uygulama sürümü ise ${currentVersion}. Bazı veriler uyumlu olmayabilir. Devam etmek istiyor musunuz?`,
+          [
+            { text: 'İptal', style: 'cancel', onPress: () => setIsRestoreInProgress(false) },
+            { 
+              text: 'Devam Et', 
+              onPress: async () => {
+                await applyBackup(backupData);
+                setIsRestoreInProgress(false);
+              }
+            }
+          ]
+        );
+      } else {
+        // Sürümler aynıysa doğrudan uygula
+        await applyBackup(backupData);
+        setIsRestoreInProgress(false);
+      }
+    } catch (error) {
+      console.error('Manuel içe aktarma hatası:', error);
+      Alert.alert('Hata', 'Yedek verisi işlenirken bir hata oluştu. Geçerli bir JSON formatında olduğundan emin olun.');
+      setIsRestoreInProgress(false);
+    }
+  };
+
+  // Panoya kopyala
+  const copyToClipboard = async (text: string) => {
+    await Clipboard.setString(text);
+    Alert.alert('Başarılı', 'Metin panoya kopyalandı.');
   };
 
   return (
@@ -698,6 +730,65 @@ export default function ProfileScreen() {
           <Text style={styles.versionText}>Versiyon 1.0.0</Text>
         </View>
       </ScrollView>
+      
+      {/* Yedek İçe Aktarma Modal */}
+      <Modal
+        visible={isImportModalVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => {
+          setIsImportModalVisible(false);
+          setIsRestoreInProgress(false);
+        }}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Yedekten Geri Yükle</Text>
+            
+            <Text style={styles.modalLabel}>Yedek Dosya Yolu:</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Örn: /data/user/0/com.example.app/files/yedek.json"
+              placeholderTextColor="#94a3b8"
+              value={backupFilePath}
+              onChangeText={setBackupFilePath}
+              multiline={false}
+            />
+            
+            <Text style={styles.modalLabel}>VEYA</Text>
+            
+            <Text style={styles.modalLabel}>Yedek JSON İçeriği:</Text>
+            <TextInput
+              style={[styles.modalInput, { height: 100 }]}
+              placeholder="JSON içeriğini yapıştırın..."
+              placeholderTextColor="#94a3b8"
+              value={backupJsonText}
+              onChangeText={setBackupJsonText}
+              multiline={true}
+              numberOfLines={5}
+            />
+            
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalCancelButton]}
+                onPress={() => {
+                  setIsImportModalVisible(false);
+                  setIsRestoreInProgress(false);
+                }}
+              >
+                <Text style={styles.modalButtonText}>İptal</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalSubmitButton]}
+                onPress={handleManualImport}
+              >
+                <Text style={styles.modalButtonText}>Geri Yükle</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -985,5 +1076,77 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 14,
     fontWeight: '600',
+  },
+  // Modal stilleri
+  modalContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: '#1e293b',
+    borderRadius: 16,
+    padding: 20,
+    width: '100%',
+    maxWidth: 500,
+    ...Platform.select({
+      android: {
+        elevation: 5,
+      },
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.25,
+        shadowRadius: 3.84,
+      },
+    }),
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#fff',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  modalLabel: {
+    fontSize: 16,
+    color: '#cbd5e1',
+    marginBottom: 8,
+    marginTop: 12,
+  },
+  modalInput: {
+    backgroundColor: '#273549',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#475569',
+    color: '#fff',
+    fontSize: 14,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 20,
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: 5,
+  },
+  modalCancelButton: {
+    backgroundColor: '#475569',
+  },
+  modalSubmitButton: {
+    backgroundColor: '#3b82f6',
+  },
+  modalButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 16,
   },
 });
