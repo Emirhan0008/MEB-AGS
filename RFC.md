@@ -13,21 +13,23 @@ MEB-AGS Çalışma Asistanı, kullanıcıların MEB Akademik Giriş Sınavı ve 
 ### 1. Bulut Senkronizasyonu ve Veri Yedekleme
 
 #### Açıklama
-Kullanıcıların verilerini cihazlar arasında senkronize etmelerine ve yedeklemelerine olanak tanıyan bir bulut depolama sistemi.
+Şu anda uygulama, metin tabanlı bir yedekleme sistemi sunmaktadır. Bu sistem, kullanıcıların verilerini bir kod olarak dışa aktarmalarına ve başka bir cihazda içe aktarmalarına olanak tanır. Bununla birlikte, daha otomatik ve kullanıcı dostu bir çözüm olarak tam teşekküllü bir bulut senkronizasyon sistemi eklenebilir.
 
 #### Teknik Detaylar
-- Firebase Firestore veya Supabase ile veri senkronizasyonu
+- Firebase Firestore veya Supabase ile otomatik veri senkronizasyonu
 - Kullanıcı kimlik doğrulaması için Firebase Authentication veya Supabase Auth
 - Fotoğraflar için Firebase Storage veya Supabase Storage
 - Çevrimdışı kullanım için yerel önbellek mekanizması
+- Mevcut metin tabanlı yedekleme sistemi ile entegrasyon
 - Otomatik ve manuel yedekleme seçenekleri
 
 #### Kullanıcı Deneyimi
 - Kullanıcılar, farklı cihazlarda aynı hesaba giriş yapabilecek
-- Cihaz değiştirildiğinde veya uygulama yeniden yüklendiğinde veriler korunacak
+- Cihaz değiştirildiğinde veya uygulama yeniden yüklendiğinde veriler otomatik olarak senkronize edilecek
 - Yedekleme geçmişi görüntülenebilecek ve geri yüklenebilecek
+- Mevcut metin tabanlı yedekleme sistemi, internet bağlantısı olmayan durumlarda alternatif bir çözüm olarak kalacak
 
-#### Öncelik: Yüksek
+#### Öncelik: Orta (Temel işlevsellik metin tabanlı yedekleme ile karşılandığından)
 
 ### 2. Gelişmiş İstatistik ve Analitik Paneli
 

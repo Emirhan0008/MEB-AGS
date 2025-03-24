@@ -111,6 +111,12 @@ MEB-AGS, kullanıcıların Milli Eğitim Bakanlığı Akademik Giriş Sınavı'n
    - Konulara test ve tekrar ekleme
    - İlerleme durumunu görüntüleme
 
+6. **Veri Yönetimi**
+   - Verileri yedekleme
+   - Yedeklenen verileri geri yükleme
+   - Cihazlar arası veri aktarımı (metin tabanlı yedek kodları ile)
+   - Yedekleme geçmişini görüntüleme
+
 ## Teknik Bağımlılıklar
 
 ### Temel Bağımlılıklar
@@ -157,6 +163,8 @@ MEB-AGS, kullanıcıların Milli Eğitim Bakanlığı Akademik Giriş Sınavı'n
 - ✅ ÖABT ders seçiminin kalıcı olarak saklanması
 - ✅ Bildirim davranışı iyileştirmeleri (sadece önemli anlarda bildirim)
 - ✅ Bildirime tıklandığında doğru ekrana yönlendirme
+- ✅ Cihazlar arası veri aktarımı için metin tabanlı yedekleme sistemi
+- ✅ Gelişmiş hata yakalama ve bildirim sistemi
 
 ### Devam Eden Çalışmalar
 - 🔄 Gelişmiş istatistik görselleştirmeleri

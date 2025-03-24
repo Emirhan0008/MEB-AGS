@@ -114,3 +114,5 @@ Daha detaylı bilgi için [PRD.md](./PRD.md) dosyasına bakabilirsiniz.
 - Bildirime tıklandığında doğru ekrana yönlendirme eklendi
 - Kalan süre hesaplaması düzeltildi
 - Foreground Service bildirimi iyileştirildi 
+- **Cihazlar arası yedekleme sistemi eklendi** (kullanıcılar verilerini metin kodu aracılığıyla farklı cihazlar arasında aktarabilir)
+- Native kütüphaneler kullanılarak yedekleme sistemi daha kararlı hale getirildi 
