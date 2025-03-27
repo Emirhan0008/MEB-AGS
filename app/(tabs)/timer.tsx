@@ -10,6 +10,7 @@ import { useTimer } from '../../context/TimerContext';
 import * as Notifications from 'expo-notifications';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { EventRegister } from 'react-native-event-listeners';
 
 const { width } = Dimensions.get('window');
 const CIRCLE_LENGTH = width * 0.7;
@@ -121,9 +122,112 @@ const CircularProgress: React.FC<CircularProgressProps> = ({ progress, size, str
   );
 };
 
+// Ekranın yanıp sönmesi için efekt bileşeni
+const FlashEffect = () => {
+  const flashOpacity = useRef(new Animated.Value(0)).current;
+  const colorToggle = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    // Yanıp sönme animasyonu (kırmızı ve mavi arası hızlı geçiş)
+    Animated.loop(
+      Animated.sequence([
+        // Kırmızı yanıp sönme
+        Animated.parallel([
+          Animated.timing(flashOpacity, {
+            toValue: 0.7,
+            duration: 150,
+            easing: Easing.ease,
+            useNativeDriver: false,
+          }),
+          Animated.timing(colorToggle, {
+            toValue: 0,
+            duration: 150,
+            useNativeDriver: false,
+          })
+        ]),
+        Animated.timing(flashOpacity, {
+          toValue: 0.2,
+          duration: 150,
+          easing: Easing.ease,
+          useNativeDriver: false,
+        }),
+        // Mavi yanıp sönme
+        Animated.parallel([
+          Animated.timing(flashOpacity, {
+            toValue: 0.7,
+            duration: 150,
+            easing: Easing.ease,
+            useNativeDriver: false,
+          }),
+          Animated.timing(colorToggle, {
+            toValue: 1,
+            duration: 150,
+            useNativeDriver: false,
+          })
+        ]),
+        Animated.timing(flashOpacity, {
+          toValue: 0.2,
+          duration: 150,
+          easing: Easing.ease,
+          useNativeDriver: false,
+        }),
+      ]),
+      { iterations: 6 } // Yaklaşık 3 saniye (6 * 600ms = 3.6 saniye)
+    ).start();
+  }, []);
+
+  // Kırmızı ve mavi renk arasında geçiş yapan değer
+  const backgroundColor = colorToggle.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['#ef4444', '#3b82f6']
+  });
+
+  return (
+    <Animated.View 
+      style={[
+        StyleSheet.absoluteFill,
+        {
+          opacity: flashOpacity,
+          backgroundColor: backgroundColor,
+          zIndex: 999, // En üstte görünmesi için
+          pointerEvents: 'none', // Dokunma etkileşimlerini engellemeyecek
+        }
+      ]}
+    />
+  );
+};
+
 export default function TimerScreen() {
   const [activeTab, setActiveTab] = useState<'pomodoro' | 'stopwatch' | 'countdown'>('pomodoro');
   const router = useRouter();
+  
+  // Animasyon ve efekt state'leri
+  const [showFlashEffect, setShowFlashEffect] = useState(false);
+  const flashOpacityRef = useRef(new Animated.Value(0)).current;
+
+  // Timer tamamlandığında tetiklenecek efektler
+  useEffect(() => {
+    // EventRegister'ı kullanarak timer tamamlandı eventini dinle
+    const timerCompletedListener = EventRegister.addEventListener('timerCompleted', (data: { mode: string, pomodoroState: string, count: number }) => {
+      console.log('Timer tamamlandı eventi alındı:', data);
+      
+      // Titreşim efekti
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      
+      // Yanıp sönme efektini göster
+      setShowFlashEffect(true);
+      
+      // 4 saniye sonra efekti kaldır
+      setTimeout(() => {
+        setShowFlashEffect(false);
+      }, 4000);
+    });
+    
+    // Component unmount olduğunda listener'ı temizle
+    return () => {
+      EventRegister.removeEventListener(timerCompletedListener as string);
+    };
+  }, []);
   
   // Bildirim izinlerini kontrol et ve pil optimizasyonu hakkında bilgilendir
   useEffect(() => {
@@ -200,6 +304,9 @@ export default function TimerScreen() {
     <SafeAreaView style={styles.container}>
       <StatusBar style="light" />
       
+      {/* Timer tamamlandığında gösterilen yanıp sönme efekti */}
+      {showFlashEffect && <FlashEffect />}
+      
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <ArrowLeft color="#fff" size={24} />
@@ -275,9 +382,6 @@ function PomodoroTimer() {
     // Eğer timer aktif değilse ve ilerleme 1'e eşitse (tamamlandıysa)
     if (!timerData.isActive && getProgress() >= 0.99 && timerData.elapsedTime > 0) {
       setShowCompletionEffect(true);
-      
-      // Titreşim efekti
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       
       // Pulse animasyonu başlat
       Animated.loop(
@@ -374,7 +478,11 @@ function PomodoroTimer() {
           ]}
         >
           <Text style={styles.completionText}>
-            {timerData.pomodoroState === 'work' ? 'Çalışma Tamamlandı!' : 'Mola Tamamlandı!'}
+            {timerData.pomodoroState === 'work' 
+              ? 'Çalışma Süresi Tamamlandı!' 
+              : timerData.pomodoroState === 'shortBreak' 
+                ? 'Kısa Mola Tamamlandı!' 
+                : 'Uzun Mola Tamamlandı!'}
           </Text>
         </Animated.View>
       )}
@@ -562,9 +670,6 @@ function CountdownTimer() {
     // Eğer timer aktif değilse ve ilerleme 1'e eşitse (tamamlandıysa)
     if (!timerData.isActive && getProgress() >= 0.99 && timerData.elapsedTime > 0 && timerData.totalTime && timerData.elapsedTime >= timerData.totalTime) {
       setShowCompletionEffect(true);
-      
-      // Titreşim efekti
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       
       // Pulse animasyonu başlat
       Animated.loop(

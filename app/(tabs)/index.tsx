@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Alert, TouchableWithoutFeedback, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Alert, TouchableWithoutFeedback, Platform, TextInput, Keyboard } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { useRouter, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, ChevronRight, Eye, EyeOff, RefreshCw } from 'lucide-react-native';
+import { useRouter, useLocalSearchParams, useNavigation } from 'expo-router';
+import { ArrowLeft, ChevronRight, Eye, EyeOff, RefreshCw, Search, X, Clock } from 'lucide-react-native';
 import { Modal } from '../../components/Modal';
 import { useStats } from '../../context/StatsContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -13,8 +13,10 @@ const SELECTED_OABT_SUBJECT_KEY = 'meb-ags-selected-oabt-subject';
 
 export default function SubjectsScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ openSubjectId?: string }>();
+  const navigation = useNavigation();
+  const params = useLocalSearchParams<{ openSubjectId?: string, highlightTopic?: string }>();
   const openSubjectId = params.openSubjectId ? parseInt(params.openSubjectId, 10) : null;
+  const highlightTopic = params.highlightTopic || null;
   
   const [selectedSubject, setSelectedSubject] = useState<any>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -25,6 +27,14 @@ export default function SubjectsScreen() {
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
   const [resetInProgress, setResetInProgress] = useState(false);
   const { stats, updateStats, resetStats, isLoading } = useStats();
+  const [highlightedTopic, setHighlightedTopic] = useState<string | null>(null);
+  
+  // Arama işlevi için state'ler
+  const [isSearchVisible, setIsSearchVisible] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [searchHistory, setSearchHistory] = useState<string[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
 
   // URL parametre ile gelen openSubjectId varsa ilgili dersi aç
   useEffect(() => {
@@ -44,8 +54,208 @@ export default function SubjectsScreen() {
         setShowAllOabtSubjects(false);
         handleSubjectPress(oabtSubject);
       }
+
+      // Vurgulanacak konu varsa ayarla
+      if (highlightTopic) {
+        setHighlightedTopic(highlightTopic);
+      }
     }
-  }, [openSubjectId]);
+  }, [openSubjectId, highlightTopic]);
+
+  // AsyncStorage'dan arama geçmişini yükle
+  useEffect(() => {
+    loadSearchHistory();
+  }, []);
+
+  // Arama geçmişini yükle
+  const loadSearchHistory = async () => {
+    try {
+      const history = await AsyncStorage.getItem('meb-ags-search-history');
+      if (history) {
+        setSearchHistory(JSON.parse(history));
+      }
+    } catch (error) {
+      console.error('Arama geçmişi yüklenirken hata oluştu:', error);
+    }
+  };
+
+  // Arama geçmişini kaydet
+  const saveSearchHistory = async (query: string) => {
+    try {
+      // Aynı sorguyu tekrar ekleme ve en son arama en üstte olsun
+      const updatedHistory = [query, ...searchHistory.filter(item => item !== query)].slice(0, 5);
+      setSearchHistory(updatedHistory);
+      await AsyncStorage.setItem('meb-ags-search-history', JSON.stringify(updatedHistory));
+    } catch (error) {
+      console.error('Arama geçmişi kaydedilirken hata oluştu:', error);
+    }
+  };
+
+  // Arama geçmişini temizle
+  const clearSearchHistory = async () => {
+    try {
+      setSearchHistory([]);
+      await AsyncStorage.removeItem('meb-ags-search-history');
+    } catch (error) {
+      console.error('Arama geçmişi temizlenirken hata oluştu:', error);
+    }
+  };
+
+  // Arama işlemini başlat
+  const handleSearch = () => {
+    if (searchQuery.trim()) {
+      performSearch(searchQuery.trim());
+      saveSearchHistory(searchQuery.trim());
+    }
+  };
+
+  // Arama sorgusunun değiştirilmesi
+  const handleSearchQueryChange = (text: string) => {
+    setSearchQuery(text);
+    // Sadece kullanıcı arama yapmak istediğinde arama yapılacak
+    // Metin girişi sırasında sonuçlar değişmeyecek
+    if (text.trim() === '') {
+      setSearchResults([]);
+    }
+  };
+
+  // Arama işlemini gerçekleştir
+  const performSearch = (query: string) => {
+    if (!query.trim()) {
+      setSearchResults([]);
+      return;
+    }
+    
+    const lowercaseQuery = query.toLowerCase().trim();
+    setIsSearching(true);
+    
+    const results = [];
+    
+    // MEB-AGS derslerinde ara
+    for (const subject of mebAgsSubjects) {
+      // Ders başlığında ara
+      if (subject.title.toLowerCase().includes(lowercaseQuery)) {
+        results.push({
+          type: 'subject',
+          id: subject.id,
+          title: subject.title,
+          subtitle: subject.subtitle,
+          category: 'meb-ags',
+          color: subject.color
+        });
+      }
+      
+      // Konularda ara
+      for (const topic of subject.topics) {
+        if (topic.toLowerCase().includes(lowercaseQuery)) {
+          results.push({
+            type: 'topic',
+            id: subject.id,
+            title: topic,
+            parentTitle: subject.title,
+            category: 'meb-ags',
+            color: subject.color
+          });
+        }
+      }
+    }
+    
+    // ÖABT derslerinde ara
+    for (const subject of oabtSubjects) {
+      // Ders başlığında ara
+      if (subject.title.toLowerCase().includes(lowercaseQuery)) {
+        results.push({
+          type: 'subject',
+          id: subject.id,
+          title: subject.title,
+          subtitle: subject.subtitle,
+          category: 'oabt',
+          color: subject.color
+        });
+      }
+      
+      // Konularda ara
+      for (const topic of subject.topics) {
+        if (topic.toLowerCase().includes(lowercaseQuery)) {
+          results.push({
+            type: 'topic',
+            id: subject.id,
+            title: topic,
+            parentTitle: subject.title,
+            category: 'oabt',
+            color: subject.color
+          });
+        }
+      }
+    }
+    
+    setSearchResults(results);
+    setIsSearching(false);
+  };
+
+  // Arama geçmişinden bir öğeyi seç
+  const handleHistoryItemPress = (query: string) => {
+    setSearchQuery(query);
+    performSearch(query);
+  };
+
+  // Sonuç öğesine tıklandığında
+  const handleResultPress = (result: any) => {
+    if (result.type === 'subject') {
+      // Kategoriyi ayarla
+      setSelectedCategory(result.category as 'meb-ags' | 'oabt');
+      
+      if (result.category === 'oabt') {
+        setSelectedOabtSubject(result.id);
+        setShowAllOabtSubjects(false);
+      }
+      
+      // Ders detayını göster
+      const subject = result.category === 'meb-ags' 
+        ? mebAgsSubjects.find(s => s.id === result.id)
+        : oabtSubjects.find(s => s.id === result.id);
+      
+      if (subject) {
+        handleSubjectPress(subject);
+      }
+    } else if (result.type === 'topic') {
+      // Kategoriyi ayarla
+      setSelectedCategory(result.category as 'meb-ags' | 'oabt');
+      
+      if (result.category === 'oabt') {
+        setSelectedOabtSubject(result.id);
+        setShowAllOabtSubjects(false);
+      }
+      
+      // Ders detayını göster ve konuyu vurgula
+      const subject = result.category === 'meb-ags' 
+        ? mebAgsSubjects.find(s => s.id === result.id)
+        : oabtSubjects.find(s => s.id === result.id);
+      
+      if (subject) {
+        setHighlightedTopic(result.title);
+        handleSubjectPress(subject);
+      }
+    }
+    
+    // Arama görünümünü kapat
+    setIsSearchVisible(false);
+    setSearchResults([]);
+  };
+
+  // Vurgulanan konuya scroll yap
+  useEffect(() => {
+    if (selectedSubject && highlightedTopic) {
+      // Kısa bir gecikme ile scrollview'ın render olmasını bekle
+      const timer = setTimeout(() => {
+        // Burada ref kullanarak ilgili konuya scroll yapılabilir
+        // Ancak bu basit örnek için sadece vurguluyoruz
+        setHighlightedTopic(highlightedTopic);
+      }, 500);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [selectedSubject, highlightedTopic]);
 
   // Seçili ÖABT dersini AsyncStorage'dan yükle
   useEffect(() => {
@@ -651,6 +861,62 @@ export default function SubjectsScreen() {
     });
   };
 
+  // Konu öğesini render et
+  const renderTopicItem = (topic: string, index: number) => {
+    const stats = topicStats[selectedSubject.id]?.[topic] || { repetitions: 0, testAttempts: 0 };
+    const isHighlighted = highlightedTopic === topic;
+    
+    return (
+      <View 
+        key={index} 
+        style={[
+          styles.topicCard,
+          isHighlighted && styles.highlightedTopic
+        ]}
+      >
+        <Text style={[styles.topicTitle, isHighlighted && styles.highlightedTopicText]}>{topic}</Text>
+        <View style={styles.topicStats}>
+          <Text style={styles.topicStatText}>{stats.repetitions} tekrar</Text>
+          <Text style={styles.topicStatText}>{stats.testAttempts} test</Text>
+        </View>
+        <View style={styles.topicActions}>
+          <TouchableOpacity 
+            style={[styles.topicButton, { backgroundColor: '#3b82f6' }]}
+            onPress={() => updateTopicStats(selectedSubject.id, topic, 'repetitions')}
+          >
+            <Text style={styles.topicButtonText}>+ Tekrar</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.topicButton, { backgroundColor: '#10b981' }]}
+            onPress={() => updateTopicStats(selectedSubject.id, topic, 'testAttempts')}
+          >
+            <Text style={styles.topicButtonText}>+ Test</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  };
+
+  // Geri tuşu için işlev
+  const handleBackPress = () => {
+    // Eğer diyalog açıksa, önce onu kapatalım
+    if (isDialogOpen) {
+      setIsDialogOpen(false);
+      return;
+    }
+    
+    // Eğer arama açıksa, önce onu kapatalım
+    if (isSearchVisible) {
+      setIsSearchVisible(false);
+      setSearchQuery('');
+      setSearchResults([]);
+      return;
+    }
+    
+    // Kullanıcıyı ana taba geri döndür
+    router.push('/');
+  };
+
   if (isLoading) {
     return (
       <SafeAreaView style={styles.container}>
@@ -670,89 +936,225 @@ export default function SubjectsScreen() {
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <TouchableOpacity onPress={() => router.back()}>
+          <TouchableOpacity onPress={handleBackPress}>
             <ArrowLeft color="#fff" size={24} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Konular</Text>
         </View>
         
-        {/* İstatistikleri Sıfırla Butonu */}
-        <TouchableOpacity 
-          style={styles.resetButton}
-          onPress={() => setIsResetModalOpen(true)}
-        >
-          <RefreshCw color="#fff" size={20} />
-        </TouchableOpacity>
-      </View>
-      
-      {/* Category Selector */}
-      <View style={styles.categorySelector}>
-        <TouchableOpacity 
-          style={[styles.categoryButton, selectedCategory === 'meb-ags' && styles.activeCategoryButton]}
-          onPress={() => handleCategoryChange('meb-ags')}
-        >
-          <Text style={[styles.categoryButtonText, selectedCategory === 'meb-ags' && styles.activeCategoryButtonText]}>
-            MEB-AGS
-          </Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={[styles.categoryButton, selectedCategory === 'oabt' && styles.activeCategoryButton]}
-          onPress={() => handleCategoryChange('oabt')}
-        >
-          <Text style={[styles.categoryButtonText, selectedCategory === 'oabt' && styles.activeCategoryButtonText]}>
-            ÖABT
-          </Text>
-        </TouchableOpacity>
-      </View>
-      
-      {/* ÖABT için Göster/Gizle Butonu */}
-      {selectedCategory === 'oabt' && selectedOabtSubject !== null && (
-        <View style={styles.toggleContainer}>
+        <View style={styles.headerRight}>
+          {/* Arama Butonu */}
           <TouchableOpacity 
-            style={styles.toggleButton}
-            onPress={toggleOabtSubjectsVisibility}
+            style={styles.searchButton}
+            onPress={() => setIsSearchVisible(true)}
           >
-            {showAllOabtSubjects ? (
-              <>
-                <EyeOff color="#fff" size={18} />
-                <Text style={styles.toggleButtonText}>Diğer Dersleri Gizle</Text>
-              </>
-            ) : (
-              <>
-                <Eye color="#fff" size={18} />
-                <Text style={styles.toggleButtonText}>Tüm Dersleri Göster</Text>
-              </>
+            <Search color="#fff" size={20} />
+          </TouchableOpacity>
+          
+          {/* İstatistikleri Sıfırla Butonu */}
+          <TouchableOpacity 
+            style={styles.resetButton}
+            onPress={() => setIsResetModalOpen(true)}
+          >
+            <RefreshCw color="#fff" size={20} />
+          </TouchableOpacity>
+        </View>
+      </View>
+      
+      {/* Arama Çubuğu */}
+      {isSearchVisible && (
+        <View style={styles.searchContainer}>
+          <View style={styles.searchInputContainer}>
+            <Search size={20} color="#666" style={styles.searchIcon} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Konu veya içerik ara..."
+              value={searchQuery}
+              onChangeText={handleSearchQueryChange}
+              onSubmitEditing={handleSearch}
+              returnKeyType="search"
+              autoFocus
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity onPress={() => {
+                setSearchQuery('');
+                setSearchResults([]);
+              }} style={styles.clearButton}>
+                <X size={20} color="#666" />
+              </TouchableOpacity>
             )}
+          </View>
+          <TouchableOpacity 
+            style={styles.closeSearchButton}
+            onPress={() => {
+              setIsSearchVisible(false);
+              setSearchQuery('');
+              setSearchResults([]);
+            }}
+          >
+            <X color="#fff" size={20} />
           </TouchableOpacity>
         </View>
       )}
       
-      <ScrollView style={styles.content}>
-        <Text style={styles.sectionTitle}>Tüm Dersler</Text>
-        
-        {getFilteredSubjects().map((subject) => (
-          <TouchableOpacity
-            key={subject.id}
-            style={[
-              styles.subjectCard,
-              selectedCategory === 'oabt' && selectedOabtSubject === subject.id && styles.selectedSubjectCard
-            ]}
-            onPress={() => handleOabtSubjectSelect(subject)}
-          >
-            <View style={styles.subjectCardContent}>
-              <View style={[styles.subjectIcon, { backgroundColor: subject.color }]}>
-                <Text style={styles.iconText}>{subject.title.charAt(0)}</Text>
-              </View>
-              <View style={styles.subjectInfo}>
-                <Text style={styles.subjectTitle}>{subject.title}</Text>
-                <Text style={styles.subjectSubtitle}>{subject.subtitle}</Text>
-              </View>
-              <ChevronRight color="#64748b" size={20} />
+      {/* Arama Sonuçları */}
+      {isSearchVisible && searchQuery.trim().length > 0 && (
+        <ScrollView style={styles.content}>
+          {isSearching ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color="#3498db" />
+              <Text style={styles.loadingText}>Aranıyor...</Text>
             </View>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+          ) : (
+            <>
+              {searchResults.length > 0 ? (
+                <View style={styles.resultsContainer}>
+                  <Text style={styles.resultsTitle}>Arama Sonuçları ({searchResults.length})</Text>
+                  {searchResults.map((result, index) => (
+                    <TouchableOpacity 
+                      key={`${result.id}-${result.type}-${index}`}
+                      style={styles.resultItem}
+                      onPress={() => handleResultPress(result)}
+                    >
+                      <View style={[styles.resultIconContainer, { backgroundColor: result.color || '#3498db' }]}>
+                        <Text style={styles.iconText}>{result.title.charAt(0)}</Text>
+                      </View>
+                      <View style={styles.resultContent}>
+                        <Text style={styles.resultTitle}>{result.title}</Text>
+                        {result.type === 'topic' && (
+                          <Text style={styles.resultSubtitle}>{result.parentTitle}</Text>
+                        )}
+                        {result.subtitle && (
+                          <Text style={styles.resultCategory}>
+                            {result.subtitle}
+                          </Text>
+                        )}
+                      </View>
+                      <ChevronRight size={16} color="#999" />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              ) : (
+                <View style={styles.noResultsContainer}>
+                  <Text style={styles.noResultsText}>
+                    "{searchQuery}" ile ilgili sonuç bulunamadı.
+                  </Text>
+                  <Text style={styles.noResultsSubText}>
+                    Farklı anahtar kelimeler deneyebilir veya daha genel terimler arayabilirsiniz.
+                  </Text>
+                </View>
+              )}
+            </>
+          )}
+        </ScrollView>
+      )}
+      
+      {/* Arama geçmişi */}
+      {isSearchVisible && !searchQuery.trim() && (
+        <ScrollView style={styles.content}>
+          <View style={styles.historyContainer}>
+            <View style={styles.historyHeader}>
+              <Text style={styles.historyTitle}>Son Aramalar</Text>
+              {searchHistory.length > 0 && (
+                <TouchableOpacity onPress={clearSearchHistory}>
+                  <Text style={styles.clearHistoryText}>Temizle</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            
+            {searchHistory.length > 0 ? (
+              searchHistory.map((query, index) => (
+                <TouchableOpacity 
+                  key={`history-${index}`}
+                  style={styles.historyItem}
+                  onPress={() => handleHistoryItemPress(query)}
+                >
+                  <Clock size={18} color="#999" />
+                  <Text style={styles.historyItemText}>{query}</Text>
+                </TouchableOpacity>
+              ))
+            ) : (
+              <Text style={styles.emptyHistoryText}>
+                Henüz arama geçmişiniz bulunmuyor.
+              </Text>
+            )}
+          </View>
+        </ScrollView>
+      )}
+      
+      {/* Ana içerik - Arama açık değilse */}
+      {!isSearchVisible && (
+        <>
+          {/* Category Selector */}
+          <View style={styles.categorySelector}>
+            <TouchableOpacity 
+              style={[styles.categoryButton, selectedCategory === 'meb-ags' && styles.activeCategoryButton]}
+              onPress={() => handleCategoryChange('meb-ags')}
+            >
+              <Text style={[styles.categoryButtonText, selectedCategory === 'meb-ags' && styles.activeCategoryButtonText]}>
+                MEB-AGS
+              </Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={[styles.categoryButton, selectedCategory === 'oabt' && styles.activeCategoryButton]}
+              onPress={() => handleCategoryChange('oabt')}
+            >
+              <Text style={[styles.categoryButtonText, selectedCategory === 'oabt' && styles.activeCategoryButtonText]}>
+                ÖABT
+              </Text>
+            </TouchableOpacity>
+          </View>
+          
+          {/* ÖABT için Göster/Gizle Butonu */}
+          {selectedCategory === 'oabt' && selectedOabtSubject !== null && (
+            <View style={styles.toggleContainer}>
+              <TouchableOpacity 
+                style={styles.toggleButton}
+                onPress={toggleOabtSubjectsVisibility}
+              >
+                {showAllOabtSubjects ? (
+                  <>
+                    <EyeOff color="#fff" size={18} />
+                    <Text style={styles.toggleButtonText}>Diğer Dersleri Gizle</Text>
+                  </>
+                ) : (
+                  <>
+                    <Eye color="#fff" size={18} />
+                    <Text style={styles.toggleButtonText}>Tüm Dersleri Göster</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          )}
+          
+          <ScrollView style={styles.content}>
+            <Text style={styles.sectionTitle}>Tüm Dersler</Text>
+            
+            {getFilteredSubjects().map((subject) => (
+              <TouchableOpacity
+                key={subject.id}
+                style={[
+                  styles.subjectCard,
+                  selectedCategory === 'oabt' && selectedOabtSubject === subject.id && styles.selectedSubjectCard
+                ]}
+                onPress={() => handleOabtSubjectSelect(subject)}
+              >
+                <View style={styles.subjectCardContent}>
+                  <View style={[styles.subjectIcon, { backgroundColor: subject.color }]}>
+                    <Text style={styles.iconText}>{subject.title.charAt(0)}</Text>
+                  </View>
+                  <View style={styles.subjectInfo}>
+                    <Text style={styles.subjectTitle}>{subject.title}</Text>
+                    <Text style={styles.subjectSubtitle}>{subject.subtitle}</Text>
+                  </View>
+                  <ChevronRight color="#64748b" size={20} />
+                </View>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </>
+      )}
       
       {/* Subject Dialog */}
       <Modal
@@ -771,32 +1173,9 @@ export default function SubjectsScreen() {
           >
             <TouchableWithoutFeedback>
               <View>
-                {selectedSubject.topics.map((topic: string, index: number) => {
-                  const stats = topicStats[selectedSubject.id]?.[topic] || { repetitions: 0, testAttempts: 0 };
-                  return (
-                    <View key={index} style={styles.topicCard}>
-                      <Text style={styles.topicTitle}>{topic}</Text>
-                      <View style={styles.topicStats}>
-                        <Text style={styles.topicStatText}>{stats.repetitions} tekrar</Text>
-                        <Text style={styles.topicStatText}>{stats.testAttempts} test</Text>
-                      </View>
-                      <View style={styles.topicActions}>
-                        <TouchableOpacity 
-                          style={[styles.topicButton, { backgroundColor: '#3b82f6' }]}
-                          onPress={() => updateTopicStats(selectedSubject.id, topic, 'repetitions')}
-                        >
-                          <Text style={styles.topicButtonText}>+ Tekrar</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity 
-                          style={[styles.topicButton, { backgroundColor: '#10b981' }]}
-                          onPress={() => updateTopicStats(selectedSubject.id, topic, 'testAttempts')}
-                        >
-                          <Text style={styles.topicButtonText}>+ Test</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  );
-                })}
+                {selectedSubject.topics.map((topic: string, index: number) => 
+                  renderTopicItem(topic, index)
+                )}
               </View>
             </TouchableWithoutFeedback>
           </ScrollView>
@@ -874,6 +1253,11 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '600',
     color: '#fff',
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
   },
   categorySelector: {
     flexDirection: 'row',
@@ -1092,5 +1476,149 @@ const styles = StyleSheet.create({
     backgroundColor: '#1e293b',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  highlightedTopic: {
+    borderLeftWidth: 4,
+    borderLeftColor: '#3b82f6',
+  },
+  highlightedTopicText: {
+    fontWeight: 'bold',
+    color: '#3b82f6',
+  },
+  searchButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#1e293b',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 8,
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: '#0f172a',
+    borderBottomWidth: 1,
+    borderBottomColor: '#1e293b',
+  },
+  searchInputContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1e293b',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    height: 40,
+  },
+  searchInput: {
+    flex: 1,
+    height: 40,
+    color: '#fff',
+    fontSize: 16,
+  },
+  searchIcon: {
+    marginRight: 8,
+  },
+  clearButton: {
+    padding: 4,
+  },
+  closeSearchButton: {
+    marginLeft: 8,
+    padding: 8,
+  },
+  resultsContainer: {
+    padding: 16,
+  },
+  resultsTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#fff',
+    marginBottom: 16,
+  },
+  resultItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    backgroundColor: '#1e293b',
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  resultIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 16,
+  },
+  resultContent: {
+    flex: 1,
+  },
+  resultTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  resultSubtitle: {
+    fontSize: 14,
+    color: '#9ca3af',
+  },
+  resultCategory: {
+    fontSize: 14,
+    color: '#9ca3af',
+  },
+  noResultsContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  noResultsText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+    marginBottom: 16,
+  },
+  noResultsSubText: {
+    fontSize: 14,
+    color: '#9ca3af',
+  },
+  historyContainer: {
+    padding: 16,
+  },
+  historyHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  historyTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  clearHistoryText: {
+    fontSize: 14,
+    color: '#3b82f6',
+  },
+  historyItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    backgroundColor: '#1e293b',
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  historyItemText: {
+    fontSize: 14,
+    color: '#fff',
+  },
+  emptyHistoryText: {
+    fontSize: 14,
+    color: '#9ca3af',
+    textAlign: 'center',
+    marginTop: 16,
   },
 });

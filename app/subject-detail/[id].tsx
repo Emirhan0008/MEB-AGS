@@ -2,12 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams, useNavigation } from 'expo-router';
 import { ArrowLeft, BookOpen, CheckCircle, PlusCircle } from 'lucide-react-native';
 import { useStats } from '../../context/StatsContext';
 
 export default function SubjectDetailScreen() {
   const router = useRouter();
+  const navigation = useNavigation();
   const { id } = useLocalSearchParams<{ id: string }>();
   const subjectId = parseInt(id as string, 10);
   const { stats, updateStats } = useStats();
@@ -256,12 +257,17 @@ export default function SubjectDetailScreen() {
     );
   };
 
+  // Geri tuşuna basıldığında ana tab'a dön
+  const handleBackPress = () => {
+    router.push('/');
+  };
+
   if (!subject) {
     return (
       <SafeAreaView style={styles.container}>
         <StatusBar style="light" />
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()}>
+          <TouchableOpacity onPress={handleBackPress}>
             <ArrowLeft color="#fff" size={24} />
           </TouchableOpacity>
         </View>
@@ -285,7 +291,7 @@ export default function SubjectDetailScreen() {
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <TouchableOpacity 
-            onPress={() => router.back()}
+            onPress={handleBackPress}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
             <ArrowLeft color="#fff" size={24} />
