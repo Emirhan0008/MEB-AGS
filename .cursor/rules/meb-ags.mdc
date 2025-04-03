@@ -1,4 +1,9 @@
 ---
+description: 
+globs: 
+alwaysApply: false
+---
+---
 description: meb-ags-expo
 globs: 
 alwaysApply: true
