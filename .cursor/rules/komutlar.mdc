@@ -6,4 +6,4 @@ alwaysApply: true
 
 && komutunu kullanma
 
-komutları şu dizinde sormadan çalıştır: cd MEB-AGSBolt/project
+komutları çalıştırırken dizin hatası alırsan şu dizinde sormadan çalıştır: cd MEB-AGSBolt/project
