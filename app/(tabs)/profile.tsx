@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, Alert, Platform, ActivityIndicator, Modal, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -15,6 +15,7 @@ import { createBackup, restoreBackup, getLastBackupDate, exportBackupAsText, imp
 import { ChevronRight } from 'lucide-react-native';
 import { Ionicons } from '@expo/vector-icons';
 import promptAndroid from 'react-native-prompt-android';
+import { useFocusEffect } from '@react-navigation/native';
 
 // AsyncStorage anahtarı
 const PROFILE_IMAGE_KEY = 'meb-ags-profile-image';
@@ -32,8 +33,6 @@ export default function ProfileScreen() {
   const [weekStudyMinutes, setWeekStudyMinutes] = useState<number>(0);
   const [monthStudyMinutes, setMonthStudyMinutes] = useState<number>(0);
   const [lastBackupDate, setLastBackupDate] = useState<Date | null>(null);
-  // Interval için ref
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
   
   // Profil fotoğrafını AsyncStorage'dan yükle
   useEffect(() => {
@@ -57,7 +56,7 @@ export default function ProfileScreen() {
   }, []);
 
   // Çalışma süresini yükle
-  const loadStudyTime = async () => {
+  const loadStudyTime = useCallback(async () => {
     try {
       // Toplam çalışma süresi
       const storedTime = await AsyncStorage.getItem(STUDY_TIME_KEY);
@@ -91,10 +90,11 @@ export default function ProfileScreen() {
         const monthlyData = JSON.parse(monthlyDataStr);
         setMonthStudyMinutes(monthlyData[monthKey] || 0);
       }
+      console.log('[PROFILE] Çalışma süreleri AsyncStorage'dan yüklendi.');
     } catch (error) {
       console.error('Çalışma süresi yüklenirken hata oluştu:', error);
     }
-  };
+  }, []);
 
   // İlk yüklemede çalışma süresini al
   useEffect(() => {
@@ -116,7 +116,7 @@ export default function ProfileScreen() {
     
     // Timer duraklatıldığında veya sıfırlandığında güncelleme al
     const forceReloadListener = EventRegister.addEventListener('forceReloadStudyTime', () => {
-      console.log('[PROFILE] Çalışma süresi zorla güncelleniyor');
+      console.log('[PROFILE] Çalışma süresi zorla güncelleniyor (forceReload)');
       loadStudyTime();
     });
     
@@ -130,25 +130,21 @@ export default function ProfileScreen() {
     
     // Bileşen kaldırıldığında dinleyicileri temizle
     return () => {
+      console.log('[PROFILE] Event listener kaydı kaldırılıyor.');
       EventRegister.removeEventListener(studyTimeListener as unknown as string);
       EventRegister.removeEventListener(forceReloadListener as unknown as string);
     };
-  }, []);
+  }, [loadStudyTime]);
 
-  // Periyodik olarak çalışma sürelerini güncelle (60 saniyede bir)
-  useEffect(() => {
-    // Interval başlat
-    timerRef.current = setInterval(() => {
+  // Ekrana odaklanıldığında verileri yükle
+  useFocusEffect(
+    useCallback(() => {
+      console.log('[PROFILE] Ekran odaklandı, çalışma süreleri yükleniyor.');
       loadStudyTime();
-    }, 60000); // 60 saniyede bir çalışma sürelerini güncelle
-    
-    // Sayfa kapatıldığında interval'ı temizle
-    return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
-    };
-  }, []);
+      // İsteğe bağlı: Yedekleme tarihini de burada yükleyebiliriz
+      // loadLastBackupDate(); 
+    }, [loadStudyTime])
+  );
   
   // Haftanın numarasını hesapla (1-53 arası)
   const getWeekNumber = (date: Date) => {

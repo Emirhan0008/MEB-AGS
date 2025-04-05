@@ -382,24 +382,43 @@ Zamanlayıcılarda (Pomodoro-Çalışma, Kronometre, Geri Sayım) geçen sürele
 *   `handlePomodoroCompletion`, `pauseTimer`, `resetTimer`, `skipPomodoroSession`, `handleAppStateChange` fonksiyonlarındaki süre ekleme mantığı, ref'i dikkate alacak şekilde güncellendi.
 *   `startTimer`, `resetTimer`, `pauseTimer`, `setTimerMode`, `setTotalTime`, `handleAppStateChange` fonksiyonlarına `lastPeriodicUpdateElapsedTimeRef`'i uygun şekilde ayarlama/sıfırlama mantığı eklendi.
 
-```typescript
-// updateElapsedTime içinde periyodik kontrol örneği
-if (prev.mode === 'stopwatch' || prev.mode === 'countdown' || (prev.mode === 'pomodoro' && prev.pomodoroState === 'work')) {
-  const elapsedSinceLastPeriodicUpdate = newElapsedTime - lastPeriodicUpdateElapsedTimeRef.current;
-  if (elapsedSinceLastPeriodicUpdate >= 60000) {
-    const minutesToAdd = Math.floor(elapsedSinceLastPeriodicUpdate / 60000);
-    if (minutesToAdd > 0) {
-      updateStudyTime(minutesToAdd);
-      lastPeriodicUpdateElapsedTimeRef.current += minutesToAdd * 60000; // Ref'i güncelle
-    }
-  }
-}
+## Sorun: Git/EAS Komutlarında Dizin Hataları (PowerShell && ve Alt Modül)
 
-// pauseTimer içinde kalan süreyi ekleme örneği
-const remainingTimeSinceLastUpdate = finalElapsedTime - lastPeriodicUpdateElapsedTimeRef.current;
-const minutesToAdd = Math.floor(remainingTimeSinceLastUpdate / 60000);
-if (minutesToAdd > 0) {
-    updateStudyTime(minutesToAdd);
-}
-lastPeriodicUpdateElapsedTimeRef.current = 0; // Duraklatınca ref'i sıfırla
+**Tarih:** 2024-07-27
+**İlgili Komutlar:** `git add .`, `git commit`, `eas update`
+**Ortam:** PowerShell (Windows)
+
+**Açıklama:**
+Git ve EAS komutları çalıştırılırken iki farklı dizin/komut hatasıyla karşılaşıldı:
+1.  **`&&` Operatörü Hatası:** PowerShell'de `cd MEB-AGSBolt/project && git add .` gibi komutlar çalıştırılmaya çalışıldığında `The token '&&' is not a valid statement separator in this version.` hatası alındı.
+2.  **Alt Modül Hatası (`fatal: in unpopulated submodule`):** `MEB-AGSBolt/project` dizini içindeyken `git add .` komutu çalıştırıldığında `fatal: in unpopulated submodule 'MEB-AGSBolt/project'` hatası alındı. Bu, projenin ana Git deposu içinde bir alt modül (submodule) olduğunu gösteriyor.
+
+**Neden:**
+1.  **PowerShell Sözdizimi:** PowerShell, Linux/bash kabuklarının aksine, komutları zincirlemek için `&&` operatörünü desteklemez. Komutları ayırmak için noktalı virgül (`;`) veya yeni satır karakterleri kullanılmalıdır.
+2.  **Git Alt Modül Yönetimi:** Bir Git deposu alt modüller içeriyorsa, tüm değişiklikleri (alt modüller dahil) hazırlık alanına eklemek (`git add .`) veya commit etmek gibi işlemler genellikle ana depo kök dizininden yapılmalıdır. Alt modül dizini içinden yapılan `git add .` işlemi, Git'in kafasını karıştırabilir veya alt modülün kendi içindeki değişiklikleri yönetmeye çalışmasına neden olabilir (ki bu durumda alt modül düzgün başlatılmamış gibi görünüyor).
+
+**Çözüm:**
+1.  **PowerShell Komut Ayrımı:** Komutları `&&` ile birleştirmek yerine ayrı ayrı çalıştır: Önce `cd DizinAdi`, sonra `git add .` gibi.
+2.  **Doğru Dizin Seçimi:**
+    *   **Git İşlemleri (`git add`, `git commit`, `git push` vb.):** Bu komutlar, alt modül içeren ana projenin **kök dizininden** (`C:\D\-Projeler-\MEB-AGSv1.2` gibi) çalıştırılmalıdır.
+    *   **EAS İşlemleri (`eas update`, `eas build` vb.):** Bu komutlar genellikle projenin Expo yapılandırma dosyasının (`app.json` veya `app.config.js`) bulunduğu **proje dizininden** (`MEB-AGSBolt/project` gibi) çalıştırılmalıdır.
+
+**İş Akışı Örneği:**
+```powershell
+# Şu anki dizin: C:\D\-Projeler-\MEB-AGSv1.2 (Ana depo kökü)
+
+# 1. Git değişikliklerini ekle ve commit et
+git add .
+git commit -m "Commit mesajı"
+# (Varsa git push)
+
+# 2. EAS için proje dizinine git
+cd MEB-AGSBolt/project
+
+# 3. EAS güncellemesini yap
+eas update --channel production
+
+# 4. (İsteğe bağlı) Ana dizine geri dön
+cd ..
+cd ..
 ```
