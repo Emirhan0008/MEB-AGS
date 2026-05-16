@@ -42,12 +42,16 @@ const BACKUP_KEYS = {
   BACKUP_DATA: 'meb-ags-backup-data'
 };
 
-// Fotoğrafları içeren klasör
-const MISTAKES_DIR = `${FileSystem.documentDirectory}mistakes/`;
+// Fotoğrafları içeren klasör (Null safe)
+const getMistakesDir = () => {
+  return FileSystem.documentDirectory ? `${FileSystem.documentDirectory}mistakes/` : null;
+};
 
 // Fotoğrafları Base64'e çevirip veriye ekleyen yardımcı fonksiyon
 const processImagesForBackup = async (data: any, key: string) => {
   try {
+    if (!FileSystem.documentDirectory) return data;
+    
     if (key === 'EXAM_RESULTS' && typeof data === 'string') {
       const exams = JSON.parse(data);
       if (Array.isArray(exams)) {
@@ -92,6 +96,9 @@ const processImagesForBackup = async (data: any, key: string) => {
 // Base64 verileri tekrar fiziksel dosyalara dönüştüren yardımcı fonksiyon
 const restoreImagesFromBackup = async (data: string, key: string) => {
   try {
+    const MISTAKES_DIR = getMistakesDir();
+    if (!MISTAKES_DIR || !FileSystem.documentDirectory) return data;
+
     // Klasörün varlığından emin ol
     const dirInfo = await FileSystem.getInfoAsync(MISTAKES_DIR);
     if (!dirInfo.exists) {
@@ -188,8 +195,21 @@ export const restoreBackup = async (customBackupString?: string) => {
       return { success: false, message: "Yedek bulunamadı" };
     }
     
-    const backupData = JSON.parse(backupString);
+    let backupData;
+    try {
+      backupData = JSON.parse(backupString);
+    } catch (e) {
+      return { success: false, message: "Yedek dosyası bozuk veya geçersiz bir formatta" };
+    }
+
+    // Dosya validasyonu
+    if (!backupData || !backupData.version || !backupData.data) {
+      return { success: false, message: "Geçersiz yedek dosyası: Gerekli alanlar eksik" };
+    }
     
+    // Mevcut verileri temizle (Sadece bizim kullandığımız anahtarları değil, tümünü temizlemek en güvenlisi)
+    await AsyncStorage.clear();
+
     // Verileri AsyncStorage'a geri yükle
     for (const [key, value] of Object.entries(backupData.data)) {
       try {
@@ -197,8 +217,8 @@ export const restoreBackup = async (customBackupString?: string) => {
         if (storageKey) {
           let dataToRestore = value as string;
           
-          // Fotoğrafları geri yükle
-          if (key === 'EXAM_RESULTS' || key === 'PROFILE_IMAGE') {
+          // Fotoğrafları geri yükle (FileSystem null kontrolü)
+          if ((key === 'EXAM_RESULTS' || key === 'PROFILE_IMAGE') && FileSystem.documentDirectory) {
             dataToRestore = await restoreImagesFromBackup(dataToRestore, key);
           }
           
@@ -207,6 +227,11 @@ export const restoreBackup = async (customBackupString?: string) => {
       } catch (error) {
         console.warn(`${key} verisi geri yüklenirken hata:`, error);
       }
+    }
+    
+    // Yedekleme tarihini de geri yükle veya güncelle
+    if (backupData.timestamp) {
+      await AsyncStorage.setItem(BACKUP_KEYS.LAST_BACKUP_DATE, backupData.timestamp);
     }
     
     return { success: true, message: "Veriler ve fotoğraflar başarıyla geri yüklendi" };
@@ -253,6 +278,10 @@ export const exportBackupAsFile = async () => {
     const result = await createBackup();
     if (!result.success || !result.backupString) return result;
     
+    if (!FileSystem.cacheDirectory) {
+      return { success: false, message: "Geçici dosya dizinine erişilemiyor" };
+    }
+
     const filename = `MEB_AGS_Yedek_${new Date().toISOString().split('T')[0]}.ags`;
     const fileUri = `${FileSystem.cacheDirectory}${filename}`;
     

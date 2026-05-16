@@ -43,6 +43,49 @@ const EXAM_TYPES = [
 // AsyncStorage key for exam results
 const EXAMS_STORAGE_KEY = '@meb_ags_exam_results';
 
+// Fullscreen Image Viewer Component
+const FullscreenImageViewer = ({ 
+  visible, 
+  onClose, 
+  imageUri, 
+  ensureValidUri 
+}: { 
+  visible: boolean; 
+  onClose: () => void; 
+  imageUri: string | null;
+  ensureValidUri: (uri: string | null) => string;
+}) => (
+  <Modal
+    visible={visible}
+    onClose={onClose}
+    title="Fotoğrafı İncele"
+  >
+    <View style={styles.fullscreenContainer}>
+      <ScrollView
+        contentContainerStyle={styles.fullscreenImageWrapper}
+        maximumZoomScale={4}
+        minimumZoomScale={1}
+        showsHorizontalScrollIndicator={false}
+        showsVerticalScrollIndicator={false}
+      >
+        {imageUri && (
+          <Image
+            source={{ uri: ensureValidUri(imageUri) }}
+            style={styles.fullscreenImage}
+            resizeMode="contain"
+          />
+        )}
+      </ScrollView>
+      <TouchableOpacity 
+        style={styles.fullscreenCloseButton}
+        onPress={onClose}
+      >
+        <Text style={styles.fullscreenCloseButtonText}>Kapat</Text>
+      </TouchableOpacity>
+    </View>
+  </Modal>
+);
+
 // Helper function to ensure URI is properly formatted for Android
 const ensureValidUri = (uri: string | null): string => {
   if (!uri) return ''; // Return empty string for null or undefined
@@ -73,7 +116,6 @@ export default function ExamsScreen() {
   const [formBlank, setFormBlank] = useState('');
   const [formExamType, setFormExamType] = useState<'meb-ags' | 'oabt' | 'branch'>('meb-ags');
   const [autoCalculateField, setAutoCalculateField] = useState<'correct' | 'incorrect' | 'blank' | null>(null);
-  const debounceTimerRef = React.useRef<NodeJS.Timeout | null>(null);
   
   const [showNoteInput, setShowNoteInput] = useState(false);
   const [selectedPhotoUri, setSelectedPhotoUri] = useState<string | null>(null);
@@ -130,12 +172,12 @@ export default function ExamsScreen() {
       // Create a unique filename
       const filename = `mistake_${Date.now()}.jpg`;
       
-      // Use appropriate directory based on platform
-      // On Android, use cacheDirectory for better compatibility with the Android file system
-      // On iOS, documentDirectory is fine
-      const baseDir = Platform.OS === 'android' 
-        ? FileSystem.cacheDirectory 
-        : FileSystem.documentDirectory;
+      // Use documentDirectory for persistent study data (mistakes)
+      // This matches backup.ts MISTAKES_DIR logic
+      const baseDir = FileSystem.documentDirectory;
+      if (!baseDir) {
+        throw new Error('FileSystem.documentDirectory is null');
+      }
       
       const directory = `${baseDir}mistakes/`;
       const fileUri = `${directory}${filename}`;
@@ -208,22 +250,40 @@ export default function ExamsScreen() {
   const calculateNetScore = (correct: number, incorrect: number): number => {
     return correct - (incorrect / 4);
   };
-  
+
+  // Form validation helper
+  const validateExamForm = (
+    correct: number, 
+    incorrect: number, 
+    blank: number, 
+    total: number
+  ): boolean => {
+    if (correct < 0 || incorrect < 0 || blank < 0 || total <= 0) {
+      Alert.alert('Hata', 'Soru sayıları negatif veya toplam sıfır olamaz.');
+      return false;
+    }
+    
+    if (correct + incorrect + blank > total) {
+      Alert.alert('Hata', `Girdiğiniz sayılar (${correct + incorrect + blank}) toplam soru sayısını (${total}) aşıyor.`);
+      return false;
+    }
+    
+    return true;
+  };
+
   const handleAddExam = () => {
     // Get the selected exam type
-    const examType = EXAM_TYPES.find(type => type.id === formExamType);
+    const examTypeConfig = EXAM_TYPES.find(type => type.id === formExamType);
     
-    // Determine total questions based on exam type
-    let totalQuestions = parseInt(formTotalQuestions) || 0;
-    if (formExamType === 'meb-ags') {
-      totalQuestions = 80;
-    } else if (formExamType === 'oabt') {
-      totalQuestions = 50;
-    }
+    // Determine total questions based on exam type config
+    let totalQuestions = examTypeConfig?.questionCount || parseInt(formTotalQuestions) || 0;
     
     const correct = parseInt(formCorrect) || 0;
     const incorrect = parseInt(formIncorrect) || 0;
     const blank = parseInt(formBlank) || 0;
+    
+    // Validate form
+    if (!validateExamForm(correct, incorrect, blank, totalQuestions)) return;
     
     // Calculate net score using the formula
     const net = calculateNetScore(correct, incorrect);
@@ -288,20 +348,18 @@ export default function ExamsScreen() {
   const handleEditExam = () => {
     if (!currentExam) return;
     
-    // Get the selected exam type
-    const examType = EXAM_TYPES.find(type => type.id === formExamType);
+    // Get the selected exam type config
+    const examTypeConfig = EXAM_TYPES.find(type => type.id === formExamType);
     
-    // Determine total questions based on exam type
-    let totalQuestions = parseInt(formTotalQuestions) || 0;
-    if (formExamType === 'meb-ags') {
-      totalQuestions = 80;
-    } else if (formExamType === 'oabt') {
-      totalQuestions = 50;
-    }
+    // Determine total questions based on exam type config
+    let totalQuestions = examTypeConfig?.questionCount || parseInt(formTotalQuestions) || 0;
     
     const correct = parseInt(formCorrect) || 0;
     const incorrect = parseInt(formIncorrect) || 0;
     const blank = parseInt(formBlank) || 0;
+    
+    // Validate form
+    if (!validateExamForm(correct, incorrect, blank, totalQuestions)) return;
     
     // Calculate net score using the formula
     const net = calculateNetScore(correct, incorrect);
@@ -576,38 +634,6 @@ export default function ExamsScreen() {
     }
   };
 
-  // Fullscreen Image Viewer Component
-  const FullscreenImageViewer = () => (
-    <Modal
-      visible={isFullscreenImageOpen}
-      onClose={() => setIsFullscreenImageOpen(false)}
-      title="Fotoğrafı İncele"
-    >
-      <View style={styles.fullscreenContainer}>
-        <ScrollView
-          contentContainerStyle={styles.fullscreenImageWrapper}
-          maximumZoomScale={4}
-          minimumZoomScale={1}
-          showsHorizontalScrollIndicator={false}
-          showsVerticalScrollIndicator={false}
-        >
-          {fullscreenImageUri && (
-            <Image
-              source={{ uri: ensureValidUri(fullscreenImageUri) }}
-              style={styles.fullscreenImage}
-              resizeMode="contain"
-            />
-          )}
-        </ScrollView>
-        <TouchableOpacity 
-          style={styles.fullscreenCloseButton}
-          onPress={() => setIsFullscreenImageOpen(false)}
-        >
-          <Text style={styles.fullscreenCloseButtonText}>Kapat</Text>
-        </TouchableOpacity>
-      </View>
-    </Modal>
-  );
 
   return (
     <SafeAreaView style={styles.container}>
@@ -803,11 +829,11 @@ export default function ExamsScreen() {
               {formExamType !== 'branch' && (
                 <View style={styles.formGroup}>
                   <Text style={styles.formLabel}>
-                    Toplam Soru: {formExamType === 'meb-ags' ? '80' : '50'}
+                    Toplam Soru: {EXAM_TYPES.find(t => t.id === formExamType)?.questionCount}
                   </Text>
                   <View style={styles.fixedValueBox}>
                     <Text style={styles.fixedValueText}>
-                      {formExamType === 'meb-ags' ? '80 Soru' : '50 Soru'}
+                      {EXAM_TYPES.find(t => t.id === formExamType)?.questionCount} Soru
                     </Text>
                   </View>
                 </View>
@@ -1199,11 +1225,11 @@ export default function ExamsScreen() {
               {formExamType !== 'branch' && (
                 <View style={styles.formGroup}>
                   <Text style={styles.formLabel}>
-                    Toplam Soru: {formExamType === 'meb-ags' ? '80' : '50'}
+                    Toplam Soru: {EXAM_TYPES.find(t => t.id === formExamType)?.questionCount}
                   </Text>
                   <View style={styles.fixedValueBox}>
                     <Text style={styles.fixedValueText}>
-                      {formExamType === 'meb-ags' ? '80 Soru' : '50 Soru'}
+                      {EXAM_TYPES.find(t => t.id === formExamType)?.questionCount} Soru
                     </Text>
                   </View>
                 </View>
@@ -1284,7 +1310,12 @@ export default function ExamsScreen() {
           </TouchableWithoutFeedback>
         </ScrollView>
       </Modal>
-      <FullscreenImageViewer />
+      <FullscreenImageViewer 
+        visible={isFullscreenImageOpen} 
+        onClose={() => setIsFullscreenImageOpen(false)}
+        imageUri={fullscreenImageUri}
+        ensureValidUri={ensureValidUri}
+      />
     </SafeAreaView>
   );
 }

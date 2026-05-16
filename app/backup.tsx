@@ -1,3 +1,19 @@
+import React, { useState, useEffect } from 'react';
+import { 
+  StyleSheet, 
+  View, 
+  Text, 
+  TouchableOpacity, 
+  ScrollView, 
+  Alert, 
+  Share, 
+  ActivityIndicator, 
+  Platform, 
+  TextInput 
+} from 'react-native';
+import { useRouter } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import { 
   createBackup, 
   restoreBackup, 
