@@ -272,7 +272,7 @@ export default function ExamsScreen() {
   };
 
   const handleAddExam = () => {
-    // Get the selected exam type
+    // Get the selected exam type config
     const examTypeConfig = EXAM_TYPES.find(type => type.id === formExamType);
     
     // Determine total questions based on exam type config
@@ -297,7 +297,7 @@ export default function ExamsScreen() {
     const newExam: ExamResult = {
       id: Date.now().toString(),
       date: new Date().toISOString().split('T')[0],
-      title: formTitle || `${examType?.name || 'Adsız Deneme'} ${examResults.length + 1}`,
+      title: formTitle || `${examTypeConfig?.name || 'Adsız Deneme'} ${examResults.length + 1}`,
       subject: subject || 'Genel',
       totalQuestions,
       correct,
@@ -372,7 +372,7 @@ export default function ExamsScreen() {
     
     const updatedExam: ExamResult = {
       ...currentExam,
-      title: formTitle || `${examType?.name || 'Adsız Deneme'}`,
+      title: formTitle || `${examTypeConfig?.name || 'Adsız Deneme'}`,
       subject: subject || 'Genel',
       totalQuestions,
       correct,
@@ -532,8 +532,8 @@ export default function ExamsScreen() {
         // If we found the mistake and it has a local URI, try to delete the file
         if (mistakeToDelete && mistakeToDelete.uri && 
             (mistakeToDelete.uri.startsWith('file://') || 
-             mistakeToDelete.uri.includes(FileSystem.cacheDirectory) || 
-             mistakeToDelete.uri.includes(FileSystem.documentDirectory))) {
+             (FileSystem.cacheDirectory && mistakeToDelete.uri.includes(FileSystem.cacheDirectory)) || 
+             (FileSystem.documentDirectory && mistakeToDelete.uri.includes(FileSystem.documentDirectory)))) {
           
           // Get valid URI for the file
           const validUri = ensureValidUri(mistakeToDelete.uri);

@@ -16,7 +16,8 @@
     "resolveJsonModule": true,
     "moduleResolution": "node",
     "esModuleInterop": true,
-    "isolatedModules": true
+    "isolatedModules": true,
+    "types": ["react", "react-native"]
   },
   "include": [
     "**/*.ts",
