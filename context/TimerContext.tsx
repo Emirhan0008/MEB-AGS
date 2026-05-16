@@ -10,6 +10,7 @@ import { Linking } from 'react-native';
 import * as Application from 'expo-application';
 import * as IntentLauncher from 'expo-intent-launcher';
 import { EventRegister } from 'react-native-event-listeners';
+import * as Device from 'expo-device';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import Constants from 'expo-constants';
 
@@ -526,76 +527,159 @@ export const TimerProvider: React.FC<TimerProviderProps> = ({ children }) => {
         }
       }
       
-      // Süre doldu mu kontrol et ve işlemleri gerçekleştir
-      if (prev.totalTime && newElapsedTime >= prev.totalTime) {
-        // Bu noktada Haptics kullanamıyoruz çünkü useEffect'te olmalı
-        // Ancak titreşim ve bildirim için EventRegister kullanabiliriz
-        console.log('[TIMER_LOG] Timer tamamlandı, bildirimleri tetikleme');
+      // Pomodoro veya Countdown modunda ve süre dolduysa
+      if ((prev.mode === 'pomodoro' || prev.mode === 'countdown') && 
+          prev.totalTime && newElapsedTime >= prev.totalTime) {
         
         // Timer'ı durdur
-        clearInterval(timerRef.current as NodeJS.Timeout);
-        timerRef.current = null;
+        if (timerRef.current) {
+          clearInterval(timerRef.current);
+          timerRef.current = null;
+        }
         
-        // Tamamlandı eventini tetikle - UI'daki efektleri tetikleyecek
+        // Tamamlandığını bildir (Görsel flash efekti için)
         setTimeout(() => {
-          EventRegister.emit('timerCompleted', {
-            mode: prev.mode,
-            pomodoroState: prev.pomodoroState,
-            pomodoroCount: prev.pomodoroCount
-          });
-        }, 0);
+          EventRegister.emit('timerCompleted', prev.mode);
+        }, 100);
         
-        // Bildirim gönder
-        setTimeout(() => {
-          // Bildirim gönder
-          let title = '';
-          let body = '';
-          
-          if (prev.mode === 'pomodoro') {
-            if (prev.pomodoroState === 'work') {
-              title = 'Pomodoro Çalışma Oturumu Tamamlandı!';
-              body = `${prev.pomodoroCount}/4 çalışma oturumunuz tamamlandı. ${prev.pomodoroCount === 4 ? '30 dakika uzun mola' : '5 dakika kısa mola'} zamanı!`;
+        // Pomodoro için oturum sayısını artır
+        if (prev.mode === 'pomodoro') {
+          // Pomodoro durumuna göre işlem yap
+          if (prev.pomodoroState === 'work') {
+            // Çalışma oturumu tamamlandı
+            const newCompletedSessions = prev.completedSessions + 1;
+            let newPomodoroCount = prev.pomodoroCount;
+            let newPomodoroState: 'work' | 'shortBreak' | 'longBreak' = 'shortBreak';
+            let newTotalTime = 5 * 60 * 1000; // 5 dakika kısa mola
+            
+            // 4. çalışma oturumu tamamlandıysa uzun mola ver
+            if (prev.pomodoroCount === 4) {
+              newPomodoroState = 'longBreak';
+              newTotalTime = 30 * 60 * 1000; // 30 dakika uzun mola
+              newPomodoroCount = 1; // Döngüyü sıfırla
             } else {
-              title = 'Pomodoro Mola Süresi Tamamlandı!';
-              body = 'Mola süreniz doldu. Şimdi çalışma zamanı!';
+              // Sonraki oturuma geç
+              newPomodoroCount = prev.pomodoroCount + 1;
             }
-          } else if (prev.mode === 'countdown') {
-            title = 'Geri Sayım Tamamlandı!';
-            body = 'Ayarladığınız süre doldu.';
+            
+            // Çalışma oturumunun tam süresini çalışma süresine ekle (25 dakika)
+            const workSessionDuration = prev.totalTime || 25 * 60 * 1000; // 25 dakika çalışma (ms cinsinden)
+            const workSessionMinutes = Math.floor(workSessionDuration / 60000);
+            updateStudyTime(workSessionMinutes);
+            
+            // Bildirim gönder
+            Notifications.scheduleNotificationAsync({
+              content: {
+                title: 'Pomodoro Tamamlandı!',
+                body: `${newCompletedSessions}. çalışma oturumunuz tamamlandı. ${newPomodoroState === 'shortBreak' ? '5 dakika kısa mola' : '30 dakika uzun mola'} zamanı!`,
+                data: { type: 'pomodoro_completed', screen: 'timer' },
+              },
+              trigger: null,
+            });
+            
+            // Bildirim gönder
+            Notifications.scheduleNotificationAsync({
+              content: {
+                title: 'Mola Tamamlandı!',
+                body: 'Mola süreniz doldu. Şimdi çalışma zamanı!',
+                data: { type: 'break_completed', screen: 'timer' },
+              },
+              trigger: null,
+            });
+            
+            console.log(`[TIMER_LOG] Pomodoro çalışma oturumu tamamlandı, ${newPomodoroState} moduna geçiliyor`);
+            
+            const newData: TimerData = {
+              ...prev,
+              isActive: true, // Otomatik olarak molaya başla
+              startTime: now,
+              elapsedTime: 0,
+              completedSessions: newCompletedSessions,
+              pomodoroState: newPomodoroState,
+              pomodoroCount: newPomodoroCount,
+              totalTime: newTotalTime,
+            };
+            
+            // Güncel verileri hemen kaydet
+            setTimeout(() => {
+              saveTimerData(newData);
+            }, 0);
+            
+            return newData;
+          } else if (prev.pomodoroState === 'shortBreak' || prev.pomodoroState === 'longBreak') {
+            // Mola tamamlandı, çalışma oturumuna geç
+            
+            // Bildirim gönder
+            Notifications.scheduleNotificationAsync({
+              content: {
+                title: 'Mola Tamamlandı!',
+                body: 'Mola süreniz doldu. Şimdi çalışma zamanı!',
+                data: { type: 'break_completed', screen: 'timer' },
+              },
+              trigger: null,
+            });
+            
+            console.log('[TIMER_LOG] Pomodoro mola tamamlandı, çalışma moduna geçiliyor');
+            
+            const newData: TimerData = {
+              ...prev,
+              isActive: true, // Otomatik olarak çalışmaya başla
+              startTime: now,
+              elapsedTime: 0,
+              pomodoroState: 'work',
+              totalTime: 25 * 60 * 1000, // 25 dakika çalışma
+            };
+            
+            // Güncel verileri hemen kaydet
+            setTimeout(() => {
+              saveTimerData(newData);
+            }, 0);
+            
+            return newData;
           }
-          
+        } else if (prev.mode === 'countdown') {
+          // Geri sayım için bildirim
           Notifications.scheduleNotificationAsync({
             content: {
-              title: title,
-              body: body,
-              data: { type: 'timer_completed', screen: 'timer' },
+              title: 'Geri Sayım Tamamlandı!',
+              body: 'Ayarladığınız süre doldu.',
+              data: { type: 'countdown_completed', screen: 'timer' },
             },
             trigger: null,
           });
-        }, 0);
-        
-        // Pomodoro için ek işlemler
-        if (prev.mode === 'pomodoro') {
-          const updatedPomodoroData = handlePomodoroCompletion({ ...prev, elapsedTime: newElapsedTime });
-          return updatedPomodoroData;
+          
+          console.log('[TIMER_LOG] Geri sayım tamamlandı');
+          
+          const newData: TimerData = {
+            ...prev,
+            isActive: false,
+            startTime: null,
+            elapsedTime: prev.totalTime || 0,
+          };
+          
+          // Güncel verileri hemen kaydet
+          setTimeout(() => {
+            saveTimerData(newData);
+          }, 0);
+          
+          return newData;
         }
-        
-        // Timer'ı durdur ve değerleri güncelle
-        return {
-          ...prev,
-          isActive: false,
-          elapsedTime: newElapsedTime,
-          pausedTime: now,
-          startTime: null
-        };
       }
       
-      // Normal güncelleme
-      return {
+      const newData: TimerData = {
         ...prev,
         elapsedTime: newElapsedTime,
-        startTime: now
+        startTime: now, // Her güncellemede startTime'ı güncelle
       };
+      
+      // Her 5 saniyede bir verileri kaydet (performans için)
+      if (newElapsedTime % 5000 === 0) {
+        setTimeout(() => {
+          saveTimerData(newData);
+        }, 0);
+      }
+      
+      return newData;
     });
   };
   
@@ -661,47 +745,26 @@ export const TimerProvider: React.FC<TimerProviderProps> = ({ children }) => {
   
   // Timer'ı başlat
   const startTimer = () => {
-    // Eğer timer zaten çalışıyorsa, bir şey yapma
-    if (timerData.isActive) return;
-    
-    // Güncellenmiş timer verisi
     const now = Date.now();
-    let updatedTimerData: TimerData;
+    console.log('Timer başlatılıyor...');
     
-    if (timerData.elapsedTime === 0 || !timerData.pausedTime) {
-      // Yeni timer başlatma
-      updatedTimerData = {
-        ...timerData,
+    setTimerData(prev => {
+      const newData = {
+        ...prev,
         isActive: true,
         startTime: now,
-        pausedTime: null
+        pausedTime: null,
       };
-    } else {
-      // Duraklatılmış timer'ı devam ettirme
-      updatedTimerData = {
-        ...timerData,
-        isActive: true,
-        startTime: now,
-        pausedTime: null
-      };
-    }
-    
-    console.log(`[TIMER_LOG] Timer başlatıldı: ${timerData.mode}, elapsedTime: ${timerData.elapsedTime}ms`);
-    
-    // Timer verisini güncelle
-    setTimerData(updatedTimerData);
-    
-    // Verileri kaydet
-    saveTimerData(updatedTimerData);
-    
-    // Timer interval'i başlat (1 saniyede bir güncelle)
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-    }
-    
-    timerRef.current = setInterval(() => {
-      updateElapsedTime();
-    }, 1000);
+      
+      console.log('Yeni timer verileri:', JSON.stringify(newData));
+      
+      // Timer verilerini kaydet
+      setTimeout(() => {
+        saveTimerData(newData);
+      }, 0);
+      
+      return newData;
+    });
   };
   
   // Timer'ı duraklat
@@ -1135,76 +1198,10 @@ export const TimerProvider: React.FC<TimerProviderProps> = ({ children }) => {
     return Math.ceil((pastDaysOfYear + firstDayOfYear.getDay() + 1) / 7);
   };
   
-  // Pomodoro tamamlandığında yapılacak işlemler
-  const handlePomodoroCompletion = (data: TimerData): TimerData => {
-    const now = Date.now();
-    
-    if (data.pomodoroState === 'work') {
-      // Çalışma oturumu tamamlandı
-      const newCompletedSessions = data.completedSessions + 1;
-      let newPomodoroCount = data.pomodoroCount;
-      let newPomodoroState: 'work' | 'shortBreak' | 'longBreak' = 'shortBreak';
-      let newTotalTime = 5 * 60 * 1000; // 5 dakika kısa mola
-      
-      // 4. çalışma oturumu tamamlandıysa uzun mola ver
-      if (data.pomodoroCount === 4) {
-        newPomodoroState = 'longBreak';
-        newTotalTime = 30 * 60 * 1000; // 30 dakika uzun mola
-        newPomodoroCount = 1; // Döngüyü sıfırla
-      } else {
-        // Sonraki oturuma geç
-        newPomodoroCount = data.pomodoroCount + 1;
-      }
-      
-      // Çalışma oturumunun tam süresini çalışma süresine ekle (25 dakika)
-      const workSessionDuration = data.totalTime || 25 * 60 * 1000; // 25 dakika çalışma (ms cinsinden)
-      const workSessionMinutes = Math.floor(workSessionDuration / 60000);
-      updateStudyTime(workSessionMinutes);
-      
-      console.log(`[TIMER_LOG] Pomodoro çalışma oturumu tamamlandı, ${newPomodoroState} moduna geçiliyor`);
-      
-      const newData: TimerData = {
-        ...data,
-        isActive: false, // Manuel olarak başlatmasını bekle
-        startTime: null,
-        pausedTime: now,
-        elapsedTime: 0,
-        completedSessions: newCompletedSessions,
-        pomodoroState: newPomodoroState,
-        pomodoroCount: newPomodoroCount,
-        totalTime: newTotalTime,
-      };
-      
-      // Güncel verileri hemen kaydet
-      setTimeout(() => {
-        saveTimerData(newData);
-      }, 0);
-      
-      return newData;
-    } else if (data.pomodoroState === 'shortBreak' || data.pomodoroState === 'longBreak') {
-      // Mola tamamlandı, çalışma oturumuna geç
-      console.log('[TIMER_LOG] Pomodoro mola tamamlandı, çalışma moduna geçiliyor');
-      
-      const newData: TimerData = {
-        ...data,
-        isActive: false, // Manuel olarak başlatmasını bekle
-        startTime: null,
-        pausedTime: now,
-        elapsedTime: 0,
-        pomodoroState: 'work',
-        totalTime: 25 * 60 * 1000, // 25 dakika çalışma
-      };
-      
-      // Güncel verileri hemen kaydet
-      setTimeout(() => {
-        saveTimerData(newData);
-      }, 0);
-      
-      return newData;
-    }
-    
-    // Beklenmeyen bir durum
-    return data;
+  // Pomodoro oturumu tamamlandığında çalışma süresini güncelle
+  const handlePomodoroSessionComplete = async () => {
+    // Bu fonksiyon artık başka yerde çağrıldığı için burayı boş bırakıyoruz
+    // Çalışma süresine ekle işlemi diğer yerlerde yapılıyor
   };
   
   // Bildirim kanalı oluştur

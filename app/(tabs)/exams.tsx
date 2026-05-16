@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Image,
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, Plus, Trash2, CreditCard as Edit2, Camera, X, Image as ImageIcon } from 'lucide-react-native';
+import { ArrowLeft, Plus, Trash2, CreditCard as Edit2, Camera, X, Image as ImageIcon, Trash } from 'lucide-react-native';
 import { Modal } from '../../components/Modal';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -77,6 +77,10 @@ export default function ExamsScreen() {
   
   const [showNoteInput, setShowNoteInput] = useState(false);
   const [selectedPhotoUri, setSelectedPhotoUri] = useState<string | null>(null);
+  
+  // Fullscreen image state
+  const [isFullscreenImageOpen, setIsFullscreenImageOpen] = useState(false);
+  const [fullscreenImageUri, setFullscreenImageUri] = useState<string | null>(null);
   
   // Load saved exam results
   useEffect(() => {
@@ -336,9 +340,42 @@ export default function ExamsScreen() {
   };
   
   const handleDeleteExam = (id: string) => {
-    const updatedExams = examResults.filter(exam => exam.id !== id);
-    setExamResults(updatedExams);
-    saveExamResults(updatedExams);
+    Alert.alert(
+      'Denemeyi Sil',
+      'Bu deneme sonucunu silmek istediğinize emin misiniz?',
+      [
+        { text: 'İptal', style: 'cancel' },
+        { 
+          text: 'Sil', 
+          style: 'destructive',
+          onPress: () => {
+            const updatedExams = examResults.filter(exam => exam.id !== id);
+            setExamResults(updatedExams);
+            saveExamResults(updatedExams);
+          }
+        }
+      ]
+    );
+  };
+
+  const handleClearAllExams = () => {
+    if (examResults.length === 0) return;
+    
+    Alert.alert(
+      'Tüm Denemeleri Sil',
+      'Tüm deneme sonuçlarını silmek istediğinize emin misiniz? Bu işlem geri alınamaz.',
+      [
+        { text: 'İptal', style: 'cancel' },
+        { 
+          text: 'Hepsini Sil', 
+          style: 'destructive',
+          onPress: () => {
+            setExamResults([]);
+            saveExamResults([]);
+          }
+        }
+      ]
+    );
   };
   
   // Calculate missing values based on other inputs
@@ -539,6 +576,33 @@ export default function ExamsScreen() {
     }
   };
 
+  // Fullscreen Image Viewer Component
+  const FullscreenImageViewer = () => (
+    <Modal
+      visible={isFullscreenImageOpen}
+      onClose={() => setIsFullscreenImageOpen(false)}
+      title="Fotoğrafı İncele"
+    >
+      <View style={styles.fullscreenContainer}>
+        <View style={styles.fullscreenImageWrapper}>
+          {fullscreenImageUri && (
+            <Image
+              source={{ uri: ensureValidUri(fullscreenImageUri) }}
+              style={styles.fullscreenImage}
+              resizeMode="contain"
+            />
+          )}
+        </View>
+        <TouchableOpacity 
+          style={styles.fullscreenCloseButton}
+          onPress={() => setIsFullscreenImageOpen(false)}
+        >
+          <Text style={styles.fullscreenCloseButtonText}>Kapat</Text>
+        </TouchableOpacity>
+      </View>
+    </Modal>
+  );
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar style="light" />
@@ -551,13 +615,23 @@ export default function ExamsScreen() {
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Denemeler</Text>
         </View>
-        <TouchableOpacity 
-          style={styles.addButton}
-          onPress={openAddModal}
-          activeOpacity={0.8}
-        >
-          <Plus color="#fff" size={24} />
-        </TouchableOpacity>
+        <View style={styles.headerRight}>
+          {examResults.length > 0 && (
+            <TouchableOpacity 
+              style={[styles.headerIconButton, { marginRight: 12 }]}
+              onPress={handleClearAllExams}
+            >
+              <Trash color="#ef4444" size={24} />
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity 
+            style={styles.addButton}
+            onPress={openAddModal}
+            activeOpacity={0.8}
+          >
+            <Plus color="#fff" size={24} />
+          </TouchableOpacity>
+        </View>
       </View>
       
       <ScrollView 
@@ -830,18 +904,29 @@ export default function ExamsScreen() {
                   {currentExam.mistakes.map((mistake) => (
                     <View key={mistake.id} style={styles.mistakeItem}>
                       {mistake.uri ? (
-                        <Image 
-                          source={{ uri: ensureValidUri(mistake.uri) }} 
-                          style={styles.mistakeImage} 
-                          resizeMode="cover"
-                          onError={(e) => {
-                            console.error('Error loading image:', e.nativeEvent.error);
-                            // If there's an error loading the image, we could show a placeholder or error message
-                            if (Platform.OS === 'android') {
-                              Alert.alert('Uyarı', 'Fotoğraf yüklenirken bir hata oluştu. Fotoğraf erişilemez olabilir.');
-                            }
+                        <TouchableOpacity 
+                          onPress={() => {
+                            setFullscreenImageUri(mistake.uri);
+                            setIsFullscreenImageOpen(true);
                           }}
-                        />
+                          activeOpacity={0.9}
+                        >
+                          <Image 
+                            source={{ uri: ensureValidUri(mistake.uri) }} 
+                            style={styles.mistakeImage} 
+                            resizeMode="cover"
+                            onError={(e) => {
+                              console.error('Error loading image:', e.nativeEvent.error);
+                              // If there's an error loading the image, we could show a placeholder or error message
+                              if (Platform.OS === 'android') {
+                                Alert.alert('Uyarı', 'Fotoğraf yüklenirken bir hata oluştu. Fotoğraf erişilemez olabilir.');
+                              }
+                            }}
+                          />
+                          <View style={styles.zoomHint}>
+                            <Text style={styles.zoomHintText}>Büyütmek için dokun</Text>
+                          </View>
+                        </TouchableOpacity>
                       ) : (
                         <View style={[styles.mistakeImage, { backgroundColor: '#334155', justifyContent: 'center', alignItems: 'center' }]}>
                           <Text style={{ color: '#94a3b8' }}>Fotoğraf bulunamadı</Text>
@@ -1193,6 +1278,7 @@ export default function ExamsScreen() {
           </TouchableWithoutFeedback>
         </ScrollView>
       </Modal>
+      <FullscreenImageViewer />
     </SafeAreaView>
   );
 }
@@ -1219,6 +1305,13 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '600',
     color: '#e2e8f0',
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  headerIconButton: {
+    padding: 8,
   },
   addButton: {
     width: 48,
@@ -1551,5 +1644,50 @@ const styles = StyleSheet.create({
     color: '#60a5fa',
     fontSize: 20,
     fontWeight: '700',
+  },
+
+  fullscreenContainer: {
+    flex: 1,
+    backgroundColor: '#000',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  fullscreenImageWrapper: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  fullscreenImage: {
+    width: '100%',
+    height: '100%',
+  },
+  fullscreenCloseButton: {
+    position: 'absolute',
+    bottom: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 20,
+  },
+  fullscreenCloseButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  zoomHint: {
+    position: 'absolute',
+    bottom: 8,
+    right: 8,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 4,
+  },
+  zoomHintText: {
+    color: '#fff',
+    fontSize: 10,
   },
 });
