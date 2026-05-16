@@ -584,7 +584,13 @@ export default function ExamsScreen() {
       title="Fotoğrafı İncele"
     >
       <View style={styles.fullscreenContainer}>
-        <View style={styles.fullscreenImageWrapper}>
+        <ScrollView
+          contentContainerStyle={styles.fullscreenImageWrapper}
+          maximumZoomScale={4}
+          minimumZoomScale={1}
+          showsHorizontalScrollIndicator={false}
+          showsVerticalScrollIndicator={false}
+        >
           {fullscreenImageUri && (
             <Image
               source={{ uri: ensureValidUri(fullscreenImageUri) }}
@@ -592,7 +598,7 @@ export default function ExamsScreen() {
               resizeMode="contain"
             />
           )}
-        </View>
+        </ScrollView>
         <TouchableOpacity 
           style={styles.fullscreenCloseButton}
           onPress={() => setIsFullscreenImageOpen(false)}

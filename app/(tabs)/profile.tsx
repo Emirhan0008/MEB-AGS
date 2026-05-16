@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, Alert, Platform, ActivityIndicator, Modal, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { LogOut, Settings, Bell, CircleHelp as HelpCircle, Shield, Star, Camera, MessageSquare, Award, BookOpen, ArrowLeft, FileText } from 'lucide-react-native';
+import { LogOut, Settings, Bell, CircleHelp as HelpCircle, Shield, Star, Camera, MessageSquare, Award, BookOpen, ArrowLeft, FileText, Database } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useStats } from '../../context/StatsContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -453,6 +453,19 @@ export default function ProfileScreen() {
                 <Bell color="#fff" size={20} />
               </View>
               <Text style={styles.menuItemText}>Bildirim Ayarları</Text>
+            </View>
+            <Text style={styles.menuItemArrow}>›</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={styles.menuItem}
+            onPress={() => router.push('/backup')}
+          >
+            <View style={styles.menuItemLeft}>
+              <View style={[styles.menuItemIcon, { backgroundColor: '#10b981' }]}>
+                <Database color="#fff" size={20} />
+              </View>
+              <Text style={styles.menuItemText}>Veri Yedekleme</Text>
             </View>
             <Text style={styles.menuItemArrow}>›</Text>
           </TouchableOpacity>
