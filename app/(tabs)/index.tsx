@@ -1,15 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Alert, TouchableWithoutFeedback, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Alert, TouchableWithoutFeedback, Platform, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, ChevronRight, Eye, EyeOff, RefreshCw } from 'lucide-react-native';
+import { ArrowLeft, ChevronRight, Eye, EyeOff, RefreshCw, Search, X } from 'lucide-react-native';
 import { Modal } from '../../components/Modal';
 import { useStats } from '../../context/StatsContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // AsyncStorage anahtarı
 const SELECTED_OABT_SUBJECT_KEY = 'meb-ags-selected-oabt-subject';
+const TOPIC_STATS_KEY = 'meb-ags-topic-stats';
 
 export default function SubjectsScreen() {
   const router = useRouter();
@@ -24,6 +25,7 @@ export default function SubjectsScreen() {
   const [showAllOabtSubjects, setShowAllOabtSubjects] = useState(true);
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
   const [resetInProgress, setResetInProgress] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const { stats, updateStats, resetStats, isLoading } = useStats();
 
   // URL parametre ile gelen openSubjectId varsa ilgili dersi aç
@@ -67,6 +69,35 @@ export default function SubjectsScreen() {
       loadSelectedOabtSubject();
     }
   }, [openSubjectId]);
+
+  // topicStats'ı AsyncStorage'dan yükle
+  useEffect(() => {
+    const loadTopicStats = async () => {
+      try {
+        const saved = await AsyncStorage.getItem(TOPIC_STATS_KEY);
+        if (saved) {
+          setTopicStats(JSON.parse(saved));
+        }
+      } catch (error) {
+        console.error('Konu istatistikleri yüklenirken hata:', error);
+      }
+    };
+    loadTopicStats();
+  }, []);
+
+  // topicStats değiştiğinde AsyncStorage'a kaydet
+  useEffect(() => {
+    const saveTopicStats = async () => {
+      try {
+        if (Object.keys(topicStats).length > 0) {
+          await AsyncStorage.setItem(TOPIC_STATS_KEY, JSON.stringify(topicStats));
+        }
+      } catch (error) {
+        console.error('Konu istatistikleri kaydedilirken hata:', error);
+      }
+    };
+    saveTopicStats();
+  }, [topicStats]);
 
   // Seçili ÖABT dersini AsyncStorage'a kaydet
   const saveSelectedOabtSubject = async (subject: any | null) => {
@@ -486,19 +517,29 @@ export default function SubjectsScreen() {
     }
   ];
 
-  // Get subjects based on selected category
+  // Get subjects based on selected category (and search query)
   const getFilteredSubjects = () => {
+    let subjects;
     if (selectedCategory === 'meb-ags') {
-      return mebAgsSubjects;
+      subjects = mebAgsSubjects;
     } else {
-      // ÖABT kategorisi seçiliyse
       if (showAllOabtSubjects || selectedOabtSubject === null) {
-        return oabtSubjects;
+        subjects = oabtSubjects;
       } else {
-        // Sadece seçilen ÖABT dersini göster
-        return oabtSubjects.filter(subject => subject.id === selectedOabtSubject);
+        subjects = oabtSubjects.filter(subject => subject.id === selectedOabtSubject);
       }
     }
+
+    // Metin araması uygula
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      subjects = subjects.filter(subject =>
+        subject.title.toLowerCase().includes(q) ||
+        subject.topics.some((topic: string) => topic.toLowerCase().includes(q))
+      );
+    }
+
+    return subjects;
   };
 
   // Kategori değiştiğinde seçili ÖABT dersini sıfırla
@@ -546,8 +587,9 @@ export default function SubjectsScreen() {
     setResetInProgress(true);
     try {
       await resetStats('all');
-      // Denemeler tabını etkilememesi için AsyncStorage'dan ÖABT ders seçimini silme
-      // await AsyncStorage.removeItem(SELECTED_OABT_SUBJECT_KEY);
+      // topicStats'ı da sıfırla
+      await AsyncStorage.removeItem(TOPIC_STATS_KEY);
+      setTopicStats({});
       Alert.alert(
         "Başarılı",
         "Tüm çalışma istatistikleriniz sıfırlandı.",
@@ -728,8 +770,28 @@ export default function SubjectsScreen() {
         </View>
       )}
       
+      {/* Arama Kutusu */}
+      <View style={styles.searchContainer}>
+        <Search color="#9ca3af" size={18} />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Ders veya konu ara..."
+          placeholderTextColor="#64748b"
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          returnKeyType="search"
+        />
+        {searchQuery.length > 0 && (
+          <TouchableOpacity onPress={() => setSearchQuery('')}>
+            <X color="#9ca3af" size={18} />
+          </TouchableOpacity>
+        )}
+      </View>
+
       <ScrollView style={styles.content}>
-        <Text style={styles.sectionTitle}>Tüm Dersler</Text>
+        <Text style={styles.sectionTitle}>
+          {searchQuery.trim() ? `"${searchQuery}" için sonuçlar` : 'Tüm Dersler'}
+        </Text>
         
         {getFilteredSubjects().map((subject) => (
           <TouchableOpacity
@@ -1092,5 +1154,22 @@ const styles = StyleSheet.create({
     backgroundColor: '#1e293b',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1e293b',
+    borderRadius: 10,
+    marginHorizontal: 16,
+    marginBottom: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 8,
+  },
+  searchInput: {
+    flex: 1,
+    color: '#fff',
+    fontSize: 15,
+    paddingVertical: 0,
   },
 });

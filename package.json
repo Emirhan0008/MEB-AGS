@@ -18,7 +18,7 @@
     "build:production": "npm run use:production && eas build --profile production --platform android",
     "update:preview": "npm run use:preview && eas update --channel preview",
     "update:production": "npm run use:production && eas update --channel production",
-    "update": "npm run update:preview"
+    "update": "npm run update:production"
   },
   "dependencies": {
     "@expo/vector-icons": "^14.0.2",

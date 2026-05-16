@@ -537,6 +537,11 @@ export const TimerProvider: React.FC<TimerProviderProps> = ({ children }) => {
           timerRef.current = null;
         }
         
+        // Tamamlandığını bildir (Görsel flash efekti için)
+        setTimeout(() => {
+          EventRegister.emit('timerCompleted', prev.mode);
+        }, 100);
+        
         // Pomodoro için oturum sayısını artır
         if (prev.mode === 'pomodoro') {
           // Pomodoro durumuna göre işlem yap

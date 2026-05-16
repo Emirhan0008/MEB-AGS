@@ -10,6 +10,7 @@ import { useTimer } from '../../context/TimerContext';
 import * as Notifications from 'expo-notifications';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { EventRegister } from 'react-native-event-listeners';
 
 const { width } = Dimensions.get('window');
 const CIRCLE_LENGTH = width * 0.7;
@@ -125,6 +126,41 @@ export default function TimerScreen() {
   const [activeTab, setActiveTab] = useState<'pomodoro' | 'stopwatch' | 'countdown'>('pomodoro');
   const router = useRouter();
   
+  // Animasyon değeri
+  const pulseAnim = useRef(new Animated.Value(0)).current;
+  const [isFlashing, setIsFlashing] = useState(false);
+  const [flashColor, setFlashColor] = useState('rgba(255, 255, 255, 0.3)');
+
+  // Global completion dinleyicisi (Timer tamamlandığında ekranı flaşlat)
+  useEffect(() => {
+    const listener = EventRegister.addEventListener('timerCompleted', (mode) => {
+      // mode is 'pomodoro' or 'countdown'
+      if (mode === 'pomodoro') setFlashColor('rgba(59, 130, 246, 0.4)'); // Mavi flaş
+      else if (mode === 'countdown') setFlashColor('rgba(239, 68, 68, 0.4)'); // Kırmızı flaş
+      else setFlashColor('rgba(255, 255, 255, 0.3)');
+
+      setIsFlashing(true);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      
+      Animated.sequence([
+        Animated.timing(pulseAnim, { toValue: 1, duration: 400, easing: Easing.ease, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 0, duration: 400, easing: Easing.ease, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 400, easing: Easing.ease, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 0, duration: 400, easing: Easing.ease, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 400, easing: Easing.ease, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 0, duration: 400, easing: Easing.ease, useNativeDriver: true }),
+      ]).start(() => {
+        setIsFlashing(false);
+      });
+    });
+    
+    return () => {
+      if (typeof listener === 'string') {
+        EventRegister.removeEventListener(listener);
+      }
+    };
+  }, [pulseAnim]);
+  
   // Bildirim izinlerini kontrol et ve pil optimizasyonu hakkında bilgilendir
   useEffect(() => {
     (async () => {
@@ -200,6 +236,18 @@ export default function TimerScreen() {
     <SafeAreaView style={styles.container}>
       <StatusBar style="light" />
       
+      {isFlashing && (
+        <Animated.View style={[
+          StyleSheet.absoluteFill,
+          {
+            backgroundColor: flashColor,
+            zIndex: 9999,
+            pointerEvents: 'none',
+            opacity: pulseAnim
+          }
+        ]} />
+      )}
+      
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <ArrowLeft color="#fff" size={24} />
@@ -261,49 +309,10 @@ function PomodoroTimer() {
     skipPomodoroSession 
   } = useTimer();
   
-  // Animasyon değeri
-  const pulseAnim = useRef(new Animated.Value(0)).current;
-  const [showCompletionEffect, setShowCompletionEffect] = useState(false);
-  
   // Timer modunu pomodoro olarak ayarla
   useEffect(() => {
     setTimerMode('pomodoro');
   }, []);
-  
-  // Timer tamamlandığında efekt göster
-  useEffect(() => {
-    // Eğer timer aktif değilse ve ilerleme 1'e eşitse (tamamlandıysa)
-    if (!timerData.isActive && getProgress() >= 0.99 && timerData.elapsedTime > 0) {
-      setShowCompletionEffect(true);
-      
-      // Titreşim efekti
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      
-      // Pulse animasyonu başlat
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(pulseAnim, {
-            toValue: 1,
-            duration: 500,
-            easing: Easing.ease,
-            useNativeDriver: true,
-          }),
-          Animated.timing(pulseAnim, {
-            toValue: 0,
-            duration: 500,
-            easing: Easing.ease,
-            useNativeDriver: true,
-          })
-        ]),
-        { iterations: 5 }
-      ).start(() => {
-        // Animasyon tamamlandığında efekti kaldır
-        setShowCompletionEffect(false);
-      });
-    } else {
-      setShowCompletionEffect(false);
-    }
-  }, [timerData.isActive, timerData.elapsedTime, getProgress]);
   
   // Pomodoro modu renkleri
   const getModeColor = () => {
@@ -357,28 +366,6 @@ function PomodoroTimer() {
   
   return (
     <View style={styles.timerContainer}>
-      {/* Tamamlanma efekti */}
-      {showCompletionEffect && (
-        <Animated.View 
-          style={[
-            styles.completionEffect,
-            {
-              opacity: pulseAnim,
-              transform: [{
-                scale: pulseAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [1, 1.2]
-                })
-              }]
-            }
-          ]}
-        >
-          <Text style={styles.completionText}>
-            {timerData.pomodoroState === 'work' ? 'Çalışma Tamamlandı!' : 'Mola Tamamlandı!'}
-          </Text>
-        </Animated.View>
-      )}
-      
       <View style={styles.circularProgressContainer}>
         <CircularProgress 
           progress={getProgress()} 
@@ -548,49 +535,10 @@ function CountdownTimer() {
   const [seconds, setSeconds] = useState('00');
   const [isEditing, setIsEditing] = useState(true);
   
-  // Animasyon değeri
-  const pulseAnim = useRef(new Animated.Value(0)).current;
-  const [showCompletionEffect, setShowCompletionEffect] = useState(false);
-  
   // Timer modunu countdown olarak ayarla
   useEffect(() => {
     setTimerMode('countdown');
   }, []);
-  
-  // Timer tamamlandığında efekt göster
-  useEffect(() => {
-    // Eğer timer aktif değilse ve ilerleme 1'e eşitse (tamamlandıysa)
-    if (!timerData.isActive && getProgress() >= 0.99 && timerData.elapsedTime > 0 && timerData.totalTime && timerData.elapsedTime >= timerData.totalTime) {
-      setShowCompletionEffect(true);
-      
-      // Titreşim efekti
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      
-      // Pulse animasyonu başlat
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(pulseAnim, {
-            toValue: 1,
-            duration: 500,
-            easing: Easing.ease,
-            useNativeDriver: true,
-          }),
-          Animated.timing(pulseAnim, {
-            toValue: 0,
-            duration: 500,
-            easing: Easing.ease,
-            useNativeDriver: true,
-          })
-        ]),
-        { iterations: 5 }
-      ).start(() => {
-        // Animasyon tamamlandığında efekti kaldır
-        setShowCompletionEffect(false);
-      });
-    } else {
-      setShowCompletionEffect(false);
-    }
-  }, [timerData.isActive, timerData.elapsedTime, timerData.totalTime, getProgress]);
   
   // Toplam süre değiştiğinde input alanlarını güncelle
   useEffect(() => {
@@ -688,26 +636,6 @@ function CountdownTimer() {
   
   return (
     <View style={styles.timerContainer}>
-      {/* Tamamlanma efekti */}
-      {showCompletionEffect && (
-        <Animated.View 
-          style={[
-            styles.completionEffect,
-            {
-              opacity: pulseAnim,
-              transform: [{
-                scale: pulseAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [1, 1.2]
-                })
-              }]
-            }
-          ]}
-        >
-          <Text style={styles.completionText}>Geri Sayım Tamamlandı!</Text>
-        </Animated.View>
-      )}
-      
       <Text style={styles.countdownTitle}>Geri Sayım Zamanlayıcısı</Text>
       
       {!isEditing && (
