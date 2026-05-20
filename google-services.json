@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "488929452470",
+    "project_id": "meb-ags-firebase-v2",
+    "storage_bucket": "meb-ags-firebase-v2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:488929452470:android:78bbd6669c341379606117",
+        "android_client_info": {
+          "package_name": "com.mebags.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "488929452470-8aqc5ukhdli2nhvoua1b1uv8u40ucrin.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.mebags.app",
+            "certificate_hash": "6ed258d694f57d968c99c8c7ce29066af0928746"
+          }
+        },
+        {
+          "client_id": "488929452470-utdanjp5smq1knbl4q1o99m36mj9tler.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBZlYec6S7GcgZcGws8zh2o3WENcYwtqIk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "488929452470-utdanjp5smq1knbl4q1o99m36mj9tler.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

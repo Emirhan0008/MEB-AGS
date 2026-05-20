@@ -148,8 +148,8 @@ const restoreImagesFromBackup = async (data: string, key: string) => {
   return data;
 };
 
-// Yedekleme fonksiyonu - AsyncStorage'a kaydeder (Fotoğraflar dahil)
-export const createBackup = async () => {
+// Yedekleme fonksiyonu - İsteğe bağlı olarak fotoğrafları Base64'e dönüştürür
+export const createBackup = async (includeImages: boolean = false) => {
   try {
     const backupData: { [key: string]: any } = {
       version: '2.0.0', // Fotoğraf desteği ile versiyon atladı
@@ -165,8 +165,9 @@ export const createBackup = async () => {
         
         let data = await AsyncStorage.getItem(value);
         if (data) {
-          // Özel anahtarlar için fotoğraf işleme
-          if (key === 'EXAM_RESULTS' || key === 'PROFILE_IMAGE') {
+          // Eğer dışa aktarma yapılıyorsa (text/file) fotoğrafları Base64'e çevir. 
+          // Aksi takdirde yerel yedeklemede RAM/Çökme sorunu yaşamamak için bunu yapma.
+          if ((key === 'EXAM_RESULTS' || key === 'PROFILE_IMAGE') && includeImages) {
             data = await processImagesForBackup(data, key);
           }
           backupData.data[key] = data;
@@ -177,7 +178,16 @@ export const createBackup = async () => {
     }
     
     const backupString = JSON.stringify(backupData);
-    await AsyncStorage.setItem(BACKUP_KEYS.BACKUP_DATA, backupString);
+    
+    // AsyncStorage has limits (e.g. 2MB on Android). We save large backups to FileSystem instead.
+    if (FileSystem.documentDirectory) {
+      const backupFileUri = `${FileSystem.documentDirectory}local_backup.json`;
+      await FileSystem.writeAsStringAsync(backupFileUri, backupString);
+    }
+    
+    // Temizlik (Eski AsyncStorage yedekleri varsa sil)
+    await AsyncStorage.removeItem(BACKUP_KEYS.BACKUP_DATA);
+    
     await AsyncStorage.setItem(BACKUP_KEYS.LAST_BACKUP_DATE, new Date().toISOString());
     
     return { success: true, message: "Veriler (fotoğraflar dahil) başarıyla yedeklendi", backupString };
@@ -190,7 +200,24 @@ export const createBackup = async () => {
 // Geri yükleme fonksiyonu
 export const restoreBackup = async (customBackupString?: string) => {
   try {
-    const backupString = customBackupString || await AsyncStorage.getItem(BACKUP_KEYS.BACKUP_DATA);
+    let backupString = customBackupString;
+    
+    // Eğer dışarıdan bir metin verilmediyse yerel dosyadan oku
+    if (!backupString) {
+      if (FileSystem.documentDirectory) {
+        const backupFileUri = `${FileSystem.documentDirectory}local_backup.json`;
+        const fileInfo = await FileSystem.getInfoAsync(backupFileUri);
+        if (fileInfo.exists) {
+          backupString = await FileSystem.readAsStringAsync(backupFileUri);
+        } else {
+          // Geriye dönük uyumluluk için AsyncStorage'dan da kontrol et
+          backupString = await AsyncStorage.getItem(BACKUP_KEYS.BACKUP_DATA) || undefined;
+        }
+      } else {
+        backupString = await AsyncStorage.getItem(BACKUP_KEYS.BACKUP_DATA) || undefined;
+      }
+    }
+    
     if (!backupString) {
       return { success: false, message: "Yedek bulunamadı" };
     }
@@ -255,7 +282,7 @@ export const getLastBackupDate = async () => {
 // Yedeği metin olarak dışa aktar (Pano)
 export const exportBackupAsText = async () => {
   try {
-    const result = await createBackup();
+    const result = await createBackup(false); // FOTOĞRAF OOM ÇÖKMESİNİ ÖNLEMEK İÇİN BASE64 DEVRE DIŞI
     if (!result.success || !result.backupString) return result;
     
     const base64Backup = base64.encode(result.backupString);
@@ -263,7 +290,7 @@ export const exportBackupAsText = async () => {
     
     return { 
       success: true, 
-      message: "Tam yedek kodu panoya kopyalandı. (Fotoğraflar dahil)", 
+      message: "Yedek kodu panoya kopyalandı. (Sistem kısıtlamaları nedeniyle fotoğraflar hariç tutuldu)", 
       backupCode: base64Backup 
     };
   } catch (error) {
@@ -275,7 +302,7 @@ export const exportBackupAsText = async () => {
 // Dosya olarak dışa aktar (WhatsApp, Email vb.)
 export const exportBackupAsFile = async () => {
   try {
-    const result = await createBackup();
+    const result = await createBackup(false); // FOTOĞRAF OOM ÇÖKMESİNİ ÖNLEMEK İÇİN BASE64 DEVRE DIŞI
     if (!result.success || !result.backupString) return result;
     
     if (!FileSystem.cacheDirectory) {

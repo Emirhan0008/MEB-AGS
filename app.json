@@ -24,6 +24,7 @@
         "backgroundColor": "#0f172a"
       },
       "package": "com.mebags.app",
+      "googleServicesFile": "./google-services.json",
       "permissions": [
         "android.permission.RECORD_AUDIO"
       ]
@@ -41,7 +42,8 @@
           "cameraPermission": "Fotoğraf çekmek için kamera izni gerekiyor."
         }
       ],
-      "expo-notifications"
+      "expo-notifications",
+      "@react-native-google-signin/google-signin"
     ],
     "scheme": "meb-ags",
     "experiments": {
